@@ -1,4 +1,10 @@
-"""Session Manager - manages agent sessions"""
+"""Session Manager - manages agent sessions.
+
+加密适配：
+- 原先直接以 JSON 形式明文写入磁盘；
+- 现在改为优先使用 `EncryptedFileStore` 进行加密读写；
+- 为了平滑迁移，若文件不是加密格式，可按明文 JSON 读入并在下一次保存时写成加密格式。
+"""
 
 import json
 import os
@@ -7,10 +13,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import time
 
+from ...crypto import get_default_encrypted_store, EncryptionConfigError  # type: ignore[attr-defined]
+
 
 @dataclass
 class SessionEntry:
     """Session entry - similar to OpenClaw's SessionEntry"""
+
     session_id: str
     session_key: str
     agent_id: Optional[str] = None
@@ -35,35 +44,53 @@ class SessionManager:
     def __init__(self, session_file: str):
         """
         Args:
-            session_file: Path to session file (JSON)
+            session_file: Path to session file (JSON or encrypted JSON)
         """
         self.session_file = Path(session_file)
         self.sessions: Dict[str, SessionEntry] = {}
         self._load()
 
     def _load(self) -> None:
-        """Load sessions from file"""
+        """Load sessions from file (encrypted first, fallback to plaintext)."""
         if not self.session_file.exists():
             return
         try:
-            with open(self.session_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict) and "sessions" in data:
-                    for session_data in data["sessions"]:
-                        entry = SessionEntry(**session_data)
-                        self.sessions[entry.session_id] = entry
+            store = get_default_encrypted_store()
+            data = store.read_json(str(self.session_file), fallback_plaintext=True)
+        except EncryptionConfigError:
+            # 未配置密钥时，退化为明文 JSON 读取（开发/测试场景）
+            try:
+                with open(self.session_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as e:  # pragma: no cover - 容错路径
+                print(f"Warning: Failed to load sessions (plaintext fallback): {e}")
+                return
         except Exception as e:
-            print(f"Warning: Failed to load sessions: {e}")
+            print(f"Warning: Failed to load sessions (encrypted): {e}")
+            return
+
+        if isinstance(data, dict) and "sessions" in data:
+            for session_data in data["sessions"]:
+                try:
+                    entry = SessionEntry(**session_data)
+                except TypeError:
+                    continue
+                self.sessions[entry.session_id] = entry
 
     def _save(self) -> None:
-        """Save sessions to file"""
+        """Save sessions to file (prefer encrypted; fallback to plaintext)."""
         try:
             self.session_file.parent.mkdir(parents=True, exist_ok=True)
-            data = {
+            payload = {
                 "sessions": [asdict(entry) for entry in self.sessions.values()],
             }
-            with open(self.session_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            try:
+                store = get_default_encrypted_store()
+                store.write_json(str(self.session_file), payload)
+            except EncryptionConfigError:
+                # 无密钥时，退化为原始明文 JSON 写入（开发/测试模式）
+                with open(self.session_file, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"Warning: Failed to save sessions: {e}")
 
