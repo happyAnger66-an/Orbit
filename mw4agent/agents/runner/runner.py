@@ -64,7 +64,7 @@ class AgentRunner:
         Returns:
             AgentRunResult with payloads and metadata
         """
-        run_id = str(uuid.uuid4())
+        run_id = params.run_id or str(uuid.uuid4())
         session_id = params.session_id or str(uuid.uuid4())
         session_key = params.session_key or f"agent:{params.agent_id or 'main'}:{session_id}"
 

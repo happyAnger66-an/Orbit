@@ -57,6 +57,7 @@ class AgentRunResult:
 class AgentRunParams:
     """Parameters for running an agent"""
     message: str
+    run_id: Optional[str] = None
     session_key: Optional[str] = None
     session_id: Optional[str] = None
     agent_id: Optional[str] = None
