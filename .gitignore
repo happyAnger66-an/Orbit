@@ -38,3 +38,6 @@ htmlcov/
 
 # MyPy
 .mypy_cache/
+
+# Root-level JSON artifacts (do not commit top-level *.json)
+/*.json
