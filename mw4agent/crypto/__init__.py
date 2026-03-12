@@ -7,7 +7,11 @@ config/session/skill files. The goal is:
 - 提供简单的加密读写 API，逐步替换裸 open()/read()/write()
 """
 
-from .secure_io import EncryptedFileStore, get_default_encrypted_store
+from .secure_io import (
+    EncryptionConfigError,
+    EncryptedFileStore,
+    get_default_encrypted_store,
+)
 
-__all__ = ["EncryptedFileStore", "get_default_encrypted_store"]
+__all__ = ["EncryptionConfigError", "EncryptedFileStore", "get_default_encrypted_store"]
 

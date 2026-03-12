@@ -8,4 +8,5 @@
 - [MW4Agent Channels 实现说明](./mw4agent-channels-implementation.md)
 - [MW4Agent Telegram 通道架构与实现](./mw4agent-telegram-channel.md)
 - [MW4Agent Webhook 通道架构与实现](./mw4agent-webhook-channel.md)
+- [Dispatcher 设计说明](./dispatcher-design.md)：Channels 如何调用 Agent（Gateway RPC vs 直接调用）
 

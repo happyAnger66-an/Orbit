@@ -1,17 +1,22 @@
 """Channel dispatcher: inbound -> agent -> outbound.
 
-This is the MW4Agent analogue of OpenClaw's dispatchInboundMessage + getReplyFromConfig path,
-but heavily simplified for the first console channel.
+This is the MW4Agent analogue of OpenClaw's dispatchInboundMessage + getReplyFromConfig path.
+
+Design:
+- If `gateway_base_url` is provided, channels call agent via Gateway RPC (aligned with OpenClaw).
+- Otherwise, channels call AgentRunner directly (simplified mode for testing/development).
 """
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import Optional
 
 from ..agents.runner.runner import AgentRunner
 from ..agents.session.manager import SessionManager
 from ..agents.types import AgentRunParams
+from ..gateway.client import call_rpc
 from .mention_gating import resolve_mention_gating
 from .registry import ChannelRegistry, get_channel_registry
 from .types import InboundContext, OutboundPayload
@@ -21,6 +26,7 @@ from .types import InboundContext, OutboundPayload
 class ChannelRuntime:
     session_manager: SessionManager
     agent_runner: AgentRunner
+    gateway_base_url: Optional[str] = None  # If set, use Gateway RPC; otherwise direct AgentRunner
 
 
 class ChannelDispatcher:
@@ -44,6 +50,61 @@ class ChannelDispatcher:
         if gate.should_skip:
             return
 
+        # Call agent via Gateway RPC (aligned with OpenClaw) or direct AgentRunner
+        if self.runtime.gateway_base_url:
+            # Gateway RPC path (aligned with OpenClaw design)
+            result_text = await self._call_agent_via_gateway(ctx)
+        else:
+            # Direct AgentRunner path (simplified mode)
+            result_text = await self._call_agent_direct(ctx)
+
+        if result_text:
+            await plugin.deliver(
+                OutboundPayload(
+                    text=result_text,
+                    is_error=False,
+                    extra={},
+                )
+            )
+
+    async def _call_agent_via_gateway(self, ctx: InboundContext) -> Optional[str]:
+        """Call agent via Gateway RPC (aligned with OpenClaw)."""
+        base_url = self.runtime.gateway_base_url or "http://127.0.0.1:18789"
+        idem_key = str(uuid.uuid4())
+
+        # Call agent RPC
+        agent_params = {
+            "message": ctx.text,
+            "sessionKey": ctx.session_key,
+            "sessionId": ctx.session_id,
+            "agentId": ctx.agent_id,
+            "idempotencyKey": idem_key,
+        }
+        start_res = call_rpc(base_url=base_url, method="agent", params=agent_params, timeout_ms=30000)
+
+        run_id = start_res.get("runId")
+        if not run_id:
+            return None
+
+        # Wait for completion
+        wait_res = call_rpc(
+            base_url=base_url,
+            method="agent.wait",
+            params={"runId": run_id, "timeoutMs": 30000},
+            timeout_ms=32000,
+        )
+
+        payload = wait_res.get("payload", {})
+        if payload.get("status") != "ok":
+            error = payload.get("error")
+            return f"[Error: {error}]" if error else None
+
+        # Extract reply text from payload
+        reply_text = payload.get("replyText") or ""
+        return reply_text.strip() if reply_text else None
+
+    async def _call_agent_direct(self, ctx: InboundContext) -> Optional[str]:
+        """Call AgentRunner directly (simplified mode)."""
         params = AgentRunParams(
             message=ctx.text,
             session_key=ctx.session_key,

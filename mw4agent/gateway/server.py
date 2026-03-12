@@ -90,6 +90,7 @@ def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
                         status="ok",
                         started_at=rec.started_at_ms,
                         ended_at=int(ended_at),
+                        reply_text=rec.reply_text_buffer.strip() if rec.reply_text_buffer else None,
                     ),
                 )
                 return
@@ -112,11 +113,16 @@ def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
                         started_at=rec.started_at_ms,
                         ended_at=int(ended_at),
                         error=error,
+                        reply_text=rec.reply_text_buffer.strip() if rec.reply_text_buffer else None,
                     ),
                 )
                 return
 
         if evt.stream == "assistant":
+            # Accumulate assistant reply text
+            text = evt.data.get("text") or evt.data.get("delta") or ""
+            if text and isinstance(text, str):
+                rec.reply_text_buffer += text
             await state.broadcast(
                 AgentEvent(
                     run_id=run_id,
@@ -244,6 +250,7 @@ def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
                         "startedAt": snap.started_at,
                         "endedAt": snap.ended_at,
                         "error": snap.error,
+                        "replyText": snap.reply_text,
                     },
                 }
 
@@ -268,6 +275,7 @@ def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
                     "startedAt": snap.started_at,
                     "endedAt": snap.ended_at,
                     "error": snap.error,
+                    "replyText": snap.reply_text,
                 },
             }
 

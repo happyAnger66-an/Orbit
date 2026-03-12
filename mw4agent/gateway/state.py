@@ -26,6 +26,7 @@ class RunSnapshot:
     started_at: Optional[int] = None
     ended_at: Optional[int] = None
     error: Optional[str] = None
+    reply_text: Optional[str] = None  # Accumulated assistant reply text
 
 
 @dataclass
@@ -37,6 +38,7 @@ class RunRecord:
     done: asyncio.Event = field(default_factory=asyncio.Event)
     snapshot: Optional[RunSnapshot] = None
     seq: int = 0
+    reply_text_buffer: str = ""  # Buffer for accumulating assistant reply text
 
 
 class GatewayState:
