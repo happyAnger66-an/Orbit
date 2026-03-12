@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from ..agents.types import AgentRunParams
+from ..config import get_default_config_manager
 
 
 @dataclass
@@ -22,6 +23,17 @@ class LLMUsage:
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
+
+
+def _load_llm_config() -> Dict[str, Any]:
+    """Load LLM config from encrypted config store (llm.json)."""
+    try:
+        mgr = get_default_config_manager()
+        cfg = mgr.read_config("llm", default={})
+        return cfg if isinstance(cfg, dict) else {}
+    except Exception:
+        # Fail open: fall back to env/hardcoded defaults if config unreadable.
+        return {}
 
 
 def _call_openai_chat(prompt: str, *, model: str, api_key: str, timeout_s: float = 30.0) -> Tuple[str, LLMUsage]:
@@ -63,8 +75,25 @@ def generate_reply(params: AgentRunParams) -> Tuple[str, str, str, LLMUsage]:
     Returns:
         reply_text, provider, model, usage
     """
-    provider = (params.provider or os.getenv("MW4AGENT_LLM_PROVIDER") or "echo").strip().lower()
-    model = (params.model or os.getenv("MW4AGENT_LLM_MODEL") or "gpt-4o-mini").strip()
+    cfg = _load_llm_config()
+    cfg_provider = ""
+    cfg_model = ""
+    if isinstance(cfg, dict):
+        cfg_provider = str(cfg.get("provider") or "").strip().lower()
+        cfg_model = str(cfg.get("model") or "").strip()
+
+    provider = (
+        params.provider
+        or os.getenv("MW4AGENT_LLM_PROVIDER")
+        or cfg_provider
+        or "echo"
+    ).strip().lower()
+    model = (
+        params.model
+        or os.getenv("MW4AGENT_LLM_MODEL")
+        or cfg_model
+        or "gpt-4o-mini"
+    ).strip()
 
     # Echo backend (default, local only)
     if provider in ("", "echo", "debug"):

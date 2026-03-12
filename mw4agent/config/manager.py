@@ -25,13 +25,22 @@ class ConfigManager:
         """Initialize config manager.
 
         Args:
-            config_dir: Base directory for config files. Defaults to `~/.mw4agent/config/`.
+            config_dir: Base directory for config files.
+
+        Priority:
+        1. Explicit config_dir argument
+        2. Environment variable MW4AGENT_CONFIG_DIR
+        3. Default: ~/.mw4agent/config
         """
         if config_dir:
             self.config_dir = Path(config_dir)
         else:
-            home = Path.home()
-            self.config_dir = home / ".mw4agent" / "config"
+            env_dir = os.getenv("MW4AGENT_CONFIG_DIR")
+            if env_dir:
+                self.config_dir = Path(env_dir)
+            else:
+                home = Path.home()
+                self.config_dir = home / ".mw4agent" / "config"
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_config_path(self, name: str) -> Path:

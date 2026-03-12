@@ -8,6 +8,7 @@ from .registry import get_registry, CommandEntry
 from .gateway import register_gateway_cli
 from .channels.register import register_channels_cli
 from .agent.register import register_agent_cli
+from .config import register_config_cli
 from .. import __version__
 
 
@@ -92,6 +93,18 @@ def register_core_commands(program: click.Group, ctx: ProgramContext) -> None:
         register=register_channels_cli,
     )
     get_registry().register_entry(channels_entry)
+
+    config_entry = CommandEntry(
+        commands=[
+            {
+                "name": "config",
+                "description": "Read and write encrypted config files",
+                "has_subcommands": True,
+            }
+        ],
+        register=register_config_cli,
+    )
+    get_registry().register_entry(config_entry)
 
 
 def register_commands(
