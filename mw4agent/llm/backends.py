@@ -37,8 +37,13 @@ def _load_llm_config() -> Dict[str, Any]:
 
 
 def _call_openai_chat(prompt: str, *, model: str, api_key: str, timeout_s: float = 30.0) -> Tuple[str, LLMUsage]:
-    """Call OpenAI Chat Completions API (minimal subset)."""
-    url = "https://api.openai.com/v1/chat/completions"
+    """Call OpenAI Chat Completions API (minimal subset).
+
+    The base URL can be overridden via MW4AGENT_OPENAI_BASE_URL for testing
+    against a mock server.
+    """
+    base_url = os.getenv("MW4AGENT_OPENAI_BASE_URL", "https://api.openai.com").rstrip("/")
+    url = f"{base_url}/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",

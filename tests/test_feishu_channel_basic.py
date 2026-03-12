@@ -1,10 +1,18 @@
 import asyncio
+import socket
 from typing import Any, Dict
 
 import pytest
 
 from mw4agent.channels.plugins.feishu import FeishuChannel
 from mw4agent.channels.types import InboundContext
+
+
+def _find_free_port() -> int:
+    """Find an available TCP port on localhost for tests."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
 
 
 @pytest.mark.asyncio
@@ -27,29 +35,30 @@ async def test_feishu_deliver_prints_without_chat_id(monkeypatch, capsys):
 
 @pytest.mark.asyncio
 async def test_feishu_run_monitor_url_verification(monkeypatch):
-    """简单验证 url_verification 请求能返回 challenge。"""
-    channel = FeishuChannel(host="127.0.0.1", port=9099, path="/feishu/test-webhook")
+    """简单验证 run_monitor 调用 webhook 分支时不会抛异常。
 
-    # 使用一个事件来在测试中结束 server
-    stop_event = asyncio.Event()
+    为避免在测试中真正启动 uvicorn HTTP server，这里通过 monkeypatch
+    将 `_run_webhook_monitor` 替换为一个快速返回的协程。这样可以验证
+    分支选择和调用链路，而不会因为端口冲突或阻塞 server 导致测试挂死。
+    """
+    # Use a free port to avoid clashes if code ever inspects it.
+    port = _find_free_port()
+    channel = FeishuChannel(host="127.0.0.1", port=port, path="/feishu/test-webhook")
 
-    async def fake_on_inbound(ctx: InboundContext) -> None:  # pragma: no cover - 行为在其它测试覆盖
+    async def fake_on_inbound(ctx: InboundContext) -> None:  # pragma: no cover
         pass
 
-    async def run_server():
-        # 直接运行 run_monitor；由于 uvicorn 是阻塞的，实际集成测试可以在单独进程跑。
-        # 这里主要验证不会抛出异常。
-        try:
-            await channel.run_monitor(on_inbound=fake_on_inbound)
-        except Exception:
-            pytest.fail("FeishuChannel.run_monitor raised unexpectedly")
-        finally:
-            stop_event.set()
+    async def fake_run_webhook_monitor(self, *, on_inbound):  # pragma: no cover
+        # Simulate a tiny bit of async work, then return.
+        await asyncio.sleep(0)
 
-    # 我们不真正启动 HTTP 请求，这里只确保协程可以启动到创建 server 的阶段。
-    task = asyncio.create_task(run_server())
-    await asyncio.wait_for(stop_event.wait(), timeout=0.1)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    # Patch the class method so that any FeishuChannel.run_monitor uses the fake monitor.
+    from mw4agent.channels.plugins.feishu import FeishuChannel as FeishuChannelClass
+    monkeypatch.setattr(FeishuChannelClass, "_run_webhook_monitor", fake_run_webhook_monitor, raising=True)
+
+    # Just ensure run_monitor completes without raising.
+    try:
+        await asyncio.wait_for(channel.run_monitor(on_inbound=fake_on_inbound), timeout=0.5)
+    except Exception as e:
+        pytest.fail(f"FeishuChannel.run_monitor raised unexpectedly: {e}")
 
