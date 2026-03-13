@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from ...skills import get_default_skill_manager
+from ...skills import SkillManager
 
 
 def build_skill_snapshot() -> Dict[str, Any]:
@@ -20,7 +20,10 @@ def build_skill_snapshot() -> Dict[str, Any]:
       "prompt": "Available skills:\\n- fs_list: List files in a directory",
     }
     """
-    mgr = get_default_skill_manager()
+    # Use a fresh SkillManager instance so that tests can control the skills
+    # directory via MW4AGENT_SKILLS_DIR without being affected by any cached
+    # global singleton from other parts of the process.
+    mgr = SkillManager()
     all_skills: Dict[str, Dict[str, Any]] = mgr.read_all_skills()
     items: List[Dict[str, Any]] = []
     lines: List[str] = []

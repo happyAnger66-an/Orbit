@@ -26,6 +26,8 @@ async def test_feishu_channel_websocket_mode_raises_not_implemented():
     try:
         await ch.run_monitor(on_inbound=_dummy_on_inbound)
     except RuntimeError as exc:
-        msg = str(exc.value)
+        # In environments without lark-oapi or required env vars, FeishuChannel
+        # should surface a clear RuntimeError message.
+        msg = str(exc)
         assert "lark-oapi" in msg or "FEISHU_APP_ID" in msg
 

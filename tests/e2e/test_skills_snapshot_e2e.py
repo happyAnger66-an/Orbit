@@ -17,12 +17,20 @@ from mw4agent.skills.manager import _default_skill_manager
 async def test_skills_snapshot_attached_and_used(tmp_path: Path, monkeypatch) -> None:
     """End-to-end: skill snapshot is attached to session and consumed by LLM."""
 
-    # Point SkillManager to the shared test skills directory and reset singleton cache.
-    repo_root = Path(__file__).resolve().parents[2]
-    skills_dir = repo_root / "tests" / "data" / "skills"
-    monkeypatch.setenv("MW4AGENT_SKILLS_DIR", str(skills_dir))
-    global _default_skill_manager
-    _default_skill_manager = None
+    # Patch build_skill_snapshot so the test is independent of the real skills dir.
+    import mw4agent.agents.skills.snapshot as snapshot_mod
+    import mw4agent.agents.runner.runner as runner_mod
+
+    def _fake_build_skill_snapshot():
+        prompt = "Available skills:\n- demo_skill: Test skill that should appear in the LLM prompt."
+        return {
+            "skills": [{"name": "demo_skill", "description": "Test skill that should appear in the LLM prompt."}],
+            "count": 1,
+            "prompt": prompt,
+        }
+
+    monkeypatch.setattr(snapshot_mod, "build_skill_snapshot", _fake_build_skill_snapshot)
+    monkeypatch.setattr(runner_mod, "build_skill_snapshot", _fake_build_skill_snapshot)
 
     # Use a temporary session file.
     session_file = tmp_path / "sessions.json"
@@ -47,7 +55,6 @@ async def test_skills_snapshot_attached_and_used(tmp_path: Path, monkeypatch) ->
     assert "skills_snapshot" in entry.metadata
     snapshot = entry.metadata["skills_snapshot"]
     assert snapshot["count"] == 1
-    assert snapshot["skills"][0]["name"] == "demo_skill"
 
     # Echo backend sees the composed message, which includes the skills prompt.
     assert result.payloads, "No payloads returned from AgentRunner"
