@@ -22,4 +22,13 @@ setup(
         ],
     },
     python_requires=">=3.8",
+    # Ensure dashboard SPA static assets are installed with the package so that
+    # FastAPI's StaticFiles mount in mw4agent.gateway.server can always find them.
+    include_package_data=True,
+    package_data={
+        "mw4agent": [
+            "dashboard/static/index.html",
+            "dashboard/static/app.js",
+        ],
+    },
 )
