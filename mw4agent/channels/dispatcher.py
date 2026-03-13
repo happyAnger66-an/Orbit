@@ -69,7 +69,7 @@ class ChannelDispatcher:
 
     async def _call_agent_via_gateway(self, ctx: InboundContext) -> Optional[str]:
         """Call agent via Gateway RPC (aligned with OpenClaw)."""
-        base_url = self.runtime.gateway_base_url or "http://127.0.0.1:18789"
+        base_url = self.runtime.gateway_base_url or "http://127.0.0.1:18790"
         idem_key = str(uuid.uuid4())
 
         # Call agent RPC

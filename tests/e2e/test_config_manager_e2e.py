@@ -37,7 +37,7 @@ def test_config_manager_write_read_encrypted(config_manager: ConfigManager, secr
     """Test writing and reading encrypted config files."""
     config_data = {
         "gateway": {
-            "port": 18789,
+            "port": 18790,
             "bind": "127.0.0.1",
         },
         "agent": {

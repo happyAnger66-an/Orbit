@@ -53,7 +53,7 @@ def register_agent_cli(program: click.Group, ctx: ProgramContext) -> None:
     ) -> None:
         """Trigger one LLM run via Gateway RPC, optionally using the gateway_ls tool."""
 
-        base_url = url or "http://127.0.0.1:18789"
+        base_url = url or "http://127.0.0.1:18790"
         extra_system_prompt: Optional[str] = None
 
         if with_gateway_ls:

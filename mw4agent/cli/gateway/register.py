@@ -17,7 +17,7 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
         pass
 
     @gateway.command("run", help="Run the WebSocket Gateway (foreground)")
-    @click.option("--port", type=int, default=18789, help="Gateway port")
+    @click.option("--port", type=int, default=18790, help="Gateway port")
     @click.option("--bind", default="127.0.0.1", help="Bind address")
     @click.option("--force", is_flag=True, help="Kill existing gateway on port")
     @click.option("--dev", is_flag=True, help="Dev profile")
@@ -49,7 +49,7 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
     @click.pass_context
     def gateway_status(ctx: click.Context, url: Optional[str], token: Optional[str], timeout: int, json_output: bool):
         """Show gateway status"""
-        base_url = url or "http://127.0.0.1:18789"
+        base_url = url or "http://127.0.0.1:18790"
         try:
             res = call_rpc(base_url=base_url, method="health", params={}, timeout_ms=timeout)
             reachable = bool(res.get("ok") is True)
@@ -95,7 +95,7 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
             click.echo(f"Error: Invalid JSON in --params: {params}", err=True)
             ctx.exit(1)
 
-        base_url = url or "http://127.0.0.1:18789"
+        base_url = url or "http://127.0.0.1:18790"
         res = call_rpc(base_url=base_url, method=method, params=params_obj, timeout_ms=timeout)
         if json_output:
             click.echo(jsonlib.dumps(res, indent=2))
@@ -109,7 +109,7 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
     @click.pass_context
     def gateway_health(ctx: click.Context, url: Optional[str], token: Optional[str], json_output: bool):
         """Fetch gateway health"""
-        base_url = url or "http://127.0.0.1:18789"
+        base_url = url or "http://127.0.0.1:18790"
         res = call_rpc(base_url=base_url, method="health", params={}, timeout_ms=3000)
         if json_output:
             click.echo(jsonlib.dumps(res, indent=2))
@@ -152,12 +152,12 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
         if json:
             result = {
                 "reachable": False,
-                "url": url or "ws://127.0.0.1:18789",
+                "url": url or "ws://127.0.0.1:18790",
                 "status": "unknown",
             }
             click.echo(json.dumps(result, indent=2))
         else:
             click.echo("Gateway Probe")
-            click.echo(f"  URL: {url or 'ws://127.0.0.1:18789'}")
+            click.echo(f"  URL: {url or 'ws://127.0.0.1:18790'}")
             click.echo("  Status: Unknown (not implemented)")
             # TODO: Implement actual probe

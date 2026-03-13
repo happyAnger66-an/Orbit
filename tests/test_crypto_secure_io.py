@@ -19,6 +19,7 @@ from mw4agent.crypto.secure_io import (  # type: ignore[attr-defined]
     MAGIC_HEADER,
     EncryptionConfigError,
     _load_key_from_env,
+    is_encryption_enabled,
 )
 
 
@@ -103,4 +104,23 @@ def test_load_key_from_env_missing_raises(monkeypatch) -> None:
         assert "MW4AGENT_SECRET_KEY is not set" in str(e)
     else:  # pragma: no cover - defensive
         raise AssertionError("expected EncryptionConfigError when env is missing")
+
+
+def test_is_encryption_enabled_switch(monkeypatch) -> None:
+    """MW4AGENT_IS_ENC controls encryption enable/disable with sensible defaults."""
+    # 默认：未设置或为空 → 启用
+    monkeypatch.delenv("MW4AGENT_IS_ENC", raising=False)
+    assert is_encryption_enabled() is True
+    monkeypatch.setenv("MW4AGENT_IS_ENC", "")
+    assert is_encryption_enabled() is True
+
+    # 显式关闭
+    for val in ("0", "false", "False", "OFF", "no", "No"):
+        monkeypatch.setenv("MW4AGENT_IS_ENC", val)
+        assert is_encryption_enabled() is False
+
+    # 其他值都视为开启
+    for val in ("1", "true", "yes", "on", "random"):
+        monkeypatch.setenv("MW4AGENT_IS_ENC", val)
+        assert is_encryption_enabled() is True
 

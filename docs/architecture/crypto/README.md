@@ -34,7 +34,7 @@ export MW4AGENT_SECRET_KEY="<生成的base64密钥>"
 from mw4agent.config import get_default_config_manager
 
 config_mgr = get_default_config_manager()
-config_mgr.write_config("gateway", {"port": 18789})
+config_mgr.write_config("gateway", {"port": 18790})
 config = config_mgr.read_config("gateway")
 ```
 

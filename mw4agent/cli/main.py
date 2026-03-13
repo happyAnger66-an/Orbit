@@ -8,7 +8,8 @@ from .registry import get_registry, CommandEntry
 from .gateway import register_gateway_cli
 from .channels.register import register_channels_cli
 from .agent.register import register_agent_cli
-from .config import register_config_cli
+from .configuration import register_configuration_cli
+from .dashboard import register_dashboard_cli
 from .. import __version__
 
 
@@ -94,17 +95,29 @@ def register_core_commands(program: click.Group, ctx: ProgramContext) -> None:
     )
     get_registry().register_entry(channels_entry)
 
-    config_entry = CommandEntry(
+    configuration_entry = CommandEntry(
         commands=[
             {
-                "name": "config",
-                "description": "Read and write encrypted config files",
+                "name": "configuration",
+                "description": "Configure MW4Agent (LLM provider/model, channels, skills, etc.)",
                 "has_subcommands": True,
             }
         ],
-        register=register_config_cli,
+        register=register_configuration_cli,
     )
-    get_registry().register_entry(config_entry)
+    get_registry().register_entry(configuration_entry)
+
+    dashboard_entry = CommandEntry(
+        commands=[
+            {
+                "name": "dashboard",
+                "description": "Open the MW4Agent web dashboard",
+                "has_subcommands": False,
+            }
+        ],
+        register=register_dashboard_cli,
+    )
+    get_registry().register_entry(dashboard_entry)
 
 
 def register_commands(

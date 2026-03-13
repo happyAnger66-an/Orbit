@@ -27,7 +27,7 @@ def resolve_gateway_options(context: Optional[Dict[str, Any]] = None) -> Gateway
     if context and isinstance(context.get("gateway_base_url"), str):
         ctx_url = context["gateway_base_url"].strip() or None
     env_url = os.getenv("MW4AGENT_GATEWAY_URL", "").strip() or None
-    return GatewayCallOptions(base_url=ctx_url or env_url or "http://127.0.0.1:18789")
+    return GatewayCallOptions(base_url=ctx_url or env_url or "http://127.0.0.1:18790")
 
 
 class GatewayLsTool(AgentTool):

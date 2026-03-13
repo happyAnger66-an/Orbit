@@ -28,7 +28,7 @@ from mw4agent.agents.runner.runner import AgentRunner
 runtime = ChannelRuntime(
     session_manager=SessionManager(...),
     agent_runner=AgentRunner(...),
-    gateway_base_url="http://127.0.0.1:18789"  # 通过 Gateway 调用
+    gateway_base_url="http://127.0.0.1:18790"  # 通过 Gateway 调用
 )
 
 dispatcher = ChannelDispatcher(runtime=runtime)
@@ -90,7 +90,7 @@ await dispatcher.dispatch_inbound(ctx)
 ```python
 async def _call_agent_via_gateway(self, ctx: InboundContext) -> Optional[str]:
     """Call agent via Gateway RPC (aligned with OpenClaw)."""
-    base_url = self.runtime.gateway_base_url or "http://127.0.0.1:18789"
+    base_url = self.runtime.gateway_base_url or "http://127.0.0.1:18790"
     idem_key = str(uuid.uuid4())
 
     # Call agent RPC
@@ -170,7 +170,7 @@ state.mark_run_terminal(
 runtime = ChannelRuntime(
     session_manager=session_mgr,
     agent_runner=agent_runner,
-    gateway_base_url="http://127.0.0.1:18789"  # 必须配置
+    gateway_base_url="http://127.0.0.1:18790"  # 必须配置
 )
 ```
 
@@ -203,7 +203,7 @@ runtime = ChannelRuntime(
 
 1. **启动 Gateway**：
    ```bash
-   mw4agent gateway run --bind 127.0.0.1 --port 18789
+   mw4agent gateway run --bind 127.0.0.1 --port 18790
    ```
 
 2. **修改 ChannelRuntime 配置**：
@@ -218,7 +218,7 @@ runtime = ChannelRuntime(
    runtime = ChannelRuntime(
        session_manager=session_mgr,
        agent_runner=agent_runner,
-       gateway_base_url="http://127.0.0.1:18789",
+       gateway_base_url="http://127.0.0.1:18790",
    )
    ```
 

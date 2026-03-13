@@ -26,7 +26,7 @@ mw4agent --version
 
 ```bash
 # 运行 Gateway
-mw4agent gateway run --port 18789
+mw4agent gateway run --port 18790
 
 # 查看状态
 mw4agent gateway status
@@ -39,7 +39,7 @@ mw4agent gateway call health --params '{"key": "value"}'
 mw4agent gateway discover
 
 # 探测 Gateway
-mw4agent gateway probe --url ws://127.0.0.1:18789
+mw4agent gateway probe --url ws://127.0.0.1:18790
 
 # JSON 输出
 mw4agent gateway status --json

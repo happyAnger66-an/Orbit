@@ -1,11 +1,12 @@
 # MW4Agent CLI 使用手册
 
-本文介绍 `mw4agent` 命令行工具的基本用法，重点围绕当前已经实现的四大命令组：
+本文介绍 `mw4agent` 命令行工具的基本用法，重点围绕当前已经实现的几个命令组：
 
 - `gateway`：运行 / 诊断 Gateway
 - `agent`：通过 Gateway 触发一次智能体执行
 - `channels`：运行各类通道（console / telegram / webhook / feishu）
 - `config`：读写加密配置文件
+- `configuration`：交互式 / 非交互式配置 LLM、channels、skills 等
 
 所有示例均假设你在仓库根目录运行：
 
@@ -30,6 +31,7 @@ python -m mw4agent --help
 - `agent`：通过 Gateway 触发一次 Agent 运行
 - `channels`：运行 console / telegram / webhook / feishu 通道
 - `config`：读写加密配置文件（`ConfigManager` 封装）
+- `configuration`：配置 LLM provider/model 等（支持交互式向导）
 
 ---
 
@@ -40,25 +42,25 @@ python -m mw4agent --help
 ```bash
 python -m mw4agent gateway run \
   --bind 127.0.0.1 \
-  --port 18789 \
+  --port 18790 \
   --session-file mw4agent.sessions.json
 ```
 
 - **`--bind`**：监听地址（本机测试推荐 `127.0.0.1`）
-- **`--port`**：HTTP 端口（默认 `18789`，与测试用例一致）
+- **`--port`**：HTTP 端口（默认 `18790`，与测试用例一致）
 - **`--session-file`**：Gateway 的 session 存储文件路径
 
 ### 2.2 查看 Gateway 状态
 
 ```bash
-python -m mw4agent gateway status --url http://127.0.0.1:18789
+python -m mw4agent gateway status --url http://127.0.0.1:18790
 ```
 
 或输出 JSON：
 
 ```bash
 python -m mw4agent gateway status \
-  --url http://127.0.0.1:18789 \
+  --url http://127.0.0.1:18790 \
   --json
 ```
 
@@ -66,7 +68,7 @@ python -m mw4agent gateway status \
 
 ```bash
 python -m mw4agent gateway call health \
-  --url http://127.0.0.1:18789 \
+  --url http://127.0.0.1:18790 \
   --params '{}' \
   --json
 ```
@@ -75,7 +77,7 @@ python -m mw4agent gateway call health \
 
 ```bash
 python -m mw4agent gateway call agent \
-  --url http://127.0.0.1:18789 \
+  --url http://127.0.0.1:18790 \
   --params '{"message":"hi","sessionKey":"cli:test","sessionId":"cli-test","agentId":"cli","idempotencyKey":"test-1"}' \
   --json
 ```
@@ -93,18 +95,18 @@ python -m mw4agent gateway call agent \
 
 ### 3.1 最小示例：跑一次 echo LLM
 
-确保 Gateway 已在本地 `http://127.0.0.1:18789` 运行后：
+确保 Gateway 已在本地 `http://127.0.0.1:18790` 运行后：
 
 ```bash
 python -m mw4agent agent run \
   --message "Hello from CLI" \
-  --url http://127.0.0.1:18789
+  --url http://127.0.0.1:18790
 ```
 
 关键参数：
 
 - **`--message`**：发送给 Agent 的用户消息（必填）
-- **`--url`**：Gateway 地址（不填默认 `http://127.0.0.1:18789`）
+- **`--url`**：Gateway 地址（不填默认 `http://127.0.0.1:18790`）
 - **`--session-key`**：会话 key，默认 `cli:default`
 - **`--session-id`**：会话 id，默认 `cli-default`
 - **`--timeout`**：`agent.wait` 超时时间（毫秒）
@@ -119,7 +121,7 @@ python -m mw4agent agent run \
   --message "请根据当前目录结构给出下一步建议" \
   --with-gateway-ls \
   --ls-path "." \
-  --url http://127.0.0.1:18789
+  --url http://127.0.0.1:18790
 ```
 
 行为：
@@ -174,7 +176,7 @@ python -m mw4agent channels webhook run \
 
 常见场景：从第三方系统（CI/CD、监控、业务系统）以 HTTP POST 的方式推消息进来，再由 Agent 处理。
 
-### 4.4 Feishu 通道（Webhook / WebSocket 占位）
+### 4.4 Feishu 通道（Webhook / WebSocket）
 
 Webhook 模式示例：
 
@@ -187,7 +189,7 @@ python -m mw4agent channels feishu run \
   --session-file mw4agent.sessions.json
 ```
 
-当前 WebSocket 模式尚未实现，CLI 会给出明确报错与文档指引。
+当前 WebSocket 模式通过官方 `lark-oapi` SDK 建立长连接，详情见 Feishu 通道架构文档。
 
 ---
 
@@ -230,11 +232,160 @@ echo '{"provider":"openai","model":"gpt-4o-mini"}' | \
 
 ---
 
-## 6. 小结
+## 6. `configuration` 命令组（交互式配置向导）
+
+`configuration` 命令组用于配置 **全局根配置文件**：
+
+- 路径：`~/.mw4agent/mw4agent.json`
+- 内容示例：
+
+```json
+{
+  "llm": {
+    "provider": "vllm",
+    "model_id": "your-model-id",
+    "base_url": "http://127.0.0.1:8000",
+    "api_key": "your-api-key"
+  }
+}
+```
+
+后续会在此文件中逐步加入 `channels`、`skills` 等子配置。
+
+### 6.1 交互式配置（推荐）
+
+直接运行：
+
+```bash
+mw4agent configuration
+```
+
+会启动一个简单的交互式向导：
+
+- 显示当前的 LLM 配置（如果已存在）；
+- 询问是否现在配置 LLM；
+- 让你从 `vllm` / `aliyun-bailian` 中选择 provider，并输入/确认 `model_id`；
+- 选择是否配置 `base_url`（例如本地 vLLM 代理地址）；
+- 选择是否配置 `api_key`（例如云服务的鉴权 token）；
+- 保存结果到 `~/.mw4agent/mw4agent.json`。
+
+该向导目前只配置 LLM，**channels / skills 的交互配置位已预留**，将在后续版本中补充。
+
+### 6.2 非交互式配置 LLM（脚本友好）
+
+如果你希望在脚本或 CI 中直接写入 LLM 配置，可以使用：
+
+```bash
+mw4agent configuration set-llm \
+  --provider vllm \
+  --model-id your-model-id \
+  --base-url http://127.0.0.1:8000 \
+  --api-key your-api-key
+```
+
+或：
+
+```bash
+mw4agent configuration set-llm \
+  --provider aliyun-bailian \
+  --model-id your-aliyun-model
+```
+
+配置会被写入到 `~/.mw4agent/mw4agent.json` 的 `llm` 段，并受加密框架控制（参考加密文档）。
+
+### 6.3 查看当前根配置
+
+```bash
+mw4agent configuration show
+```
+
+输出：
+
+- 根配置文件路径；
+- 当前 LLM provider / model-id 概要。
+
+如果希望查看完整 JSON：
+
+```bash
+mw4agent configuration show --json
+```
+
+---
+
+## 7. `dashboard` 命令（Web 控制台）
+
+`dashboard` 命令用于快速打开基于浏览器的 **MW4Agent 控制台**，它通过：
+
+- `POST /rpc` 调用 Gateway 的 RPC（目前主要是 `agent`）；
+- `WS /ws` 订阅 Agent 事件流（assistant 文本流、生命周期事件等）；
+- 前端是一个单页应用（SPA），由 Gateway 在根路径 `/` 提供静态资源。
+
+### 7.1 启动 Gateway
+
+在使用 `dashboard` 之前，需要先启动 Gateway（推荐仅绑定本机）：
+
+```bash
+mw4agent gateway run \
+  --bind 127.0.0.1 \
+  --port 18790
+```
+
+此时：
+
+- HTTP 地址：`http://127.0.0.1:18790/`
+- RPC：`POST http://127.0.0.1:18790/rpc`
+- WebSocket：`ws://127.0.0.1:18790/ws`
+
+### 7.2 打开 Dashboard
+
+在另一个终端运行：
+
+```bash
+mw4agent dashboard
+```
+
+- 默认会假定 Gateway 运行在 `http://127.0.0.1:18790`；
+- 命令行会打印 Dashboard 地址，并尝试用系统默认浏览器打开该链接；
+- 如果浏览器无法自动打开，你可以手动复制链接到浏览器。
+
+也可以显式指定 Gateway 地址：
+
+```bash
+mw4agent dashboard --url http://127.0.0.1:18790
+```
+
+或仅打印 URL，不自动打开浏览器：
+
+```bash
+mw4agent dashboard --no-open
+```
+
+### 7.3 当前 Dashboard 能做什么（骨架版）
+
+当前版本的 Dashboard 是一个 **骨架实现**，主要用于验证端到端链路是否打通：
+
+- 左侧是一个最小聊天面板：
+  - 在输入框中输入消息点击发送；
+  - 前端通过 `/rpc` 调用 `agent` 方法触发一次 Agent 运行；
+  - Gateway 将 LLM 输出通过 `/ws` 以事件流形式推送回前端；
+  - 前端把 assistant 文本消息渲染到聊天窗口。
+- 右侧是 Gateway 状态面板：
+  - 展示 WebSocket 是否已连接；
+  - 展示最近一次运行的 `runId` 与收到的事件总数。
+
+后续可以在这个骨架基础上扩展：
+
+- 增加会话列表、通道状态、技能面板、定时任务（cron）管理等；
+- 对齐 OpenClaw Dashboard 的多面板设计与操作能力。
+
+---
+
+## 8. 小结
 
 - 使用 `gateway run` + `channels console run` 可以在本机快速搭建一个“Gateway + Console Chat”的测试环境；
 - 使用 `agent run` 可以脚本化触发单次 Agent 回合（支持在调用前执行工具）；
-- 使用 `config read/write` 可以安全地管理加密配置（LLM provider、通道配置等），避免手工处理加密细节。
+- 使用 `config read/write` 可以安全地管理加密配置（LLM provider、通道配置等），避免手工处理加密细节；
+- 使用 `configuration` 可以以交互式或非交互式方式配置全局 LLM 与后续的 channels/skills 设置。
 
-后续可以在 `docs/manuals/` 下为不同通道、不同运行模式补充更详细的 CLI 示例（如与 mock LLM server 联动的完整演示）。 
+后续可以在 `docs/manuals/` 下为不同通道、不同运行模式补充更详细的 CLI 示例（如与 mock LLM server 联动的完整演示），以及为 `dashboard` 补充更丰富的前端使用说明（多面板、会话管理、通道控制等）。 
 

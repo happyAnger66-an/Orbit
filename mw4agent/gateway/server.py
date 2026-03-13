@@ -12,10 +12,12 @@ import asyncio
 import json
 import time
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from ..agents.runner.runner import AgentRunner
 from ..agents.session.manager import SessionManager
@@ -152,6 +154,21 @@ def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
     app.state.gateway_state = state
     app.state.session_manager = session_manager
     app.state.agent_runner = runner
+
+    # --- Minimal dashboard SPA (served as static files) ---
+    # The SPA lives in mw4agent/dashboard/static and talks to:
+    # - POST /rpc for Gateway RPC
+    # - WS  /ws  for agent event streams
+    dashboard_static_dir = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "static"
+    )
+    if dashboard_static_dir.is_dir():
+        # Serve the dashboard at "/" (similar to OpenClaw Control UI default).
+        app.mount(
+            "/",
+            StaticFiles(directory=str(dashboard_static_dir), html=True),
+            name="dashboard",
+        )
 
     @app.get("/health")
     async def health() -> Dict[str, Any]:

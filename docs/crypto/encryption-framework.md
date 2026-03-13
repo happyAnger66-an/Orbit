@@ -90,12 +90,12 @@ from mw4agent.config import ConfigManager, get_default_config_manager
 config_mgr = get_default_config_manager()
 
 # 读取配置
-config = config_mgr.read_config("gateway", default={"port": 18789})
+config = config_mgr.read_config("gateway", default={"port": 18790})
 print(config["port"])
 
 # 写入配置（自动加密）
 config_mgr.write_config("gateway", {
-    "port": 18789,
+    "port": 18790,
     "bind": "127.0.0.1",
     "session_file": "~/.mw4agent/gateway.sessions.json"
 })
@@ -204,7 +204,7 @@ config_mgr = get_default_config_manager()
 
 # 写入 Gateway 配置（自动加密）
 config_mgr.write_config("gateway", {
-    "port": 18789,
+    "port": 18790,
     "bind": "127.0.0.1",
     "session_file": "~/.mw4agent/gateway.sessions.json",
     "timeout_ms": 30000

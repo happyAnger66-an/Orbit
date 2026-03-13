@@ -39,6 +39,20 @@ class EncryptionConfigError(RuntimeError):
     """Raised when encryption is requested but not properly configured."""
 
 
+def is_encryption_enabled(env_var: str = "MW4AGENT_IS_ENC") -> bool:
+    """Check whether encryption is enabled via env switch.
+
+    - 默认开启：未设置或为空时视为开启；
+    - 显式关闭：当值为 "0" / "false" / "off" / "no"（忽略大小写）时关闭。
+    """
+    raw = os.getenv(env_var)
+    if raw is None:
+        return True
+    value = raw.strip().lower()
+    if value in ("0", "false", "off", "no"):
+        return False
+    return True
+
 def _load_key_from_env(env_var: str = "MW4AGENT_SECRET_KEY") -> bytes:
     """Load symmetric key from env (base64 或原始 32 字节 hex/raw).
 
@@ -148,6 +162,10 @@ def get_default_encrypted_store() -> EncryptedFileStore:
     Key 来源：`MW4AGENT_SECRET_KEY` 环境变量。
     """
     global _default_store
+    if not is_encryption_enabled():
+        raise EncryptionConfigError(
+            "Encryption disabled via MW4AGENT_IS_ENC; falling back to plaintext."
+        )
     if _default_store is None:
         key = _load_key_from_env()
         _default_store = EncryptedFileStore(key=key)

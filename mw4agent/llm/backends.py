@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..agents.types import AgentRunParams
 from ..config import get_default_config_manager
+from ..config.root import read_root_config
 
 
 @dataclass
@@ -26,24 +27,47 @@ class LLMUsage:
 
 
 def _load_llm_config() -> Dict[str, Any]:
-    """Load LLM config from encrypted config store (llm.json)."""
+    """Load LLM config from config files.
+
+    优先级（低 → 高）：
+    - 旧版加密配置 llm.json（~/.mw4agent/config/llm.json）
+    - 根配置 ~/.mw4agent/mw4agent.json 中的 llm 段
+    """
+    cfg: Dict[str, Any] = {}
+    # 1) 兼容旧版：llm.json
     try:
         mgr = get_default_config_manager()
-        cfg = mgr.read_config("llm", default={})
-        return cfg if isinstance(cfg, dict) else {}
+        legacy = mgr.read_config("llm", default={})
+        if isinstance(legacy, dict):
+            cfg.update(legacy)
     except Exception:
-        # Fail open: fall back to env/hardcoded defaults if config unreadable.
-        return {}
+        pass
+
+    # 2) 新版：根配置 mw4agent.json 下的 llm 段（具有更高优先级）
+    try:
+        root = read_root_config()
+        llm_root = root.get("llm")
+        if isinstance(llm_root, dict):
+            cfg.update(llm_root)
+    except Exception:
+        pass
+
+    return cfg
 
 
-def _call_openai_chat(prompt: str, *, model: str, api_key: str, timeout_s: float = 30.0) -> Tuple[str, LLMUsage]:
-    """Call OpenAI Chat Completions API (minimal subset).
-
-    The base URL can be overridden via MW4AGENT_OPENAI_BASE_URL for testing
-    against a mock server.
-    """
-    base_url = os.getenv("MW4AGENT_OPENAI_BASE_URL", "https://api.openai.com").rstrip("/")
-    url = f"{base_url}/v1/chat/completions"
+def _call_openai_chat(
+    prompt: str,
+    *,
+    model: str,
+    api_key: str,
+    base_url: Optional[str] = None,
+    timeout_s: float = 30.0,
+) -> Tuple[str, LLMUsage]:
+    """Call an OpenAI-compatible Chat Completions API (minimal subset)."""
+    effective_base = (
+        base_url or os.getenv("MW4AGENT_OPENAI_BASE_URL") or "https://api.openai.com"
+    ).rstrip("/")
+    url = f"{effective_base}/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -83,9 +107,16 @@ def generate_reply(params: AgentRunParams) -> Tuple[str, str, str, LLMUsage]:
     cfg = _load_llm_config()
     cfg_provider = ""
     cfg_model = ""
+    cfg_base_url: Optional[str] = None
+    cfg_api_key: Optional[str] = None
     if isinstance(cfg, dict):
         cfg_provider = str(cfg.get("provider") or "").strip().lower()
-        cfg_model = str(cfg.get("model") or "").strip()
+        # 兼容旧字段名 "model" 与新字段名 "model_id"
+        cfg_model = str(cfg.get("model") or cfg.get("model_id") or "").strip()
+        raw_base = str(cfg.get("base_url") or "").strip()
+        cfg_base_url = raw_base or None
+        raw_key = str(cfg.get("api_key") or "").strip()
+        cfg_api_key = raw_key or None
 
     provider = (
         params.provider
@@ -105,9 +136,9 @@ def generate_reply(params: AgentRunParams) -> Tuple[str, str, str, LLMUsage]:
         reply = f"Agent (echo) reply: {params.message}"
         return reply, "echo", model, LLMUsage()
 
-    # OpenAI backend (requires OPENAI_API_KEY)
+    # OpenAI backend (requires OPENAI_API_KEY or cfg.api_key)
     if provider == "openai":
-        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        api_key = os.getenv("OPENAI_API_KEY", "").strip() or (cfg_api_key or "")
         if not api_key:
             # Fallback to echo if no API key
             reply = f"Agent (echo:no-api-key) reply: {params.message}"
@@ -116,11 +147,40 @@ def generate_reply(params: AgentRunParams) -> Tuple[str, str, str, LLMUsage]:
         if params.extra_system_prompt:
             prompt = params.extra_system_prompt.strip() + "\n\n" + prompt
         try:
-            text, usage = _call_openai_chat(prompt, model=model, api_key=api_key)
+            text, usage = _call_openai_chat(
+                prompt,
+                model=model,
+                api_key=api_key,
+                base_url=cfg_base_url,
+            )
             return text or "", provider, model, usage
         except Exception as e:
             # Fail closed to echo so agent仍可工作
             fallback = f"Agent (openai-error) reply: {params.message}\n\n[error: {e}]"
+            return fallback, provider, model, LLMUsage()
+
+    # vLLM / 阿里云百炼等 OpenAI 兼容后端
+    if provider in ("vllm", "aliyun-bailian"):
+        # 优先使用配置中的 api_key/base_url，其次环境变量
+        api_key = (cfg_api_key or os.getenv("MW4AGENT_LLM_API_KEY", "").strip())
+        base_url = (cfg_base_url or os.getenv("MW4AGENT_LLM_BASE_URL", "").strip() or None)
+        if not base_url:
+            reply = f"Agent (echo:no-base-url:{provider}) reply: {params.message}"
+            return reply, "echo", model, LLMUsage()
+        # 对某些本地部署的 vLLM，可以无需 api_key；这里不强制要求
+        prompt = params.message
+        if params.extra_system_prompt:
+            prompt = params.extra_system_prompt.strip() + "\n\n" + prompt
+        try:
+            text, usage = _call_openai_chat(
+                prompt,
+                model=model,
+                api_key=api_key or "none",
+                base_url=base_url,
+            )
+            return text or "", provider, model, usage
+        except Exception as e:
+            fallback = f"Agent ({provider}-error) reply: {params.message}\n\n[error: {e}]"
             return fallback, provider, model, LLMUsage()
 
     # Unknown provider → echo
