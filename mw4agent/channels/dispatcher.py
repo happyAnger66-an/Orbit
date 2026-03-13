@@ -115,42 +115,13 @@ class ChannelDispatcher:
         )
         result = await self.runtime.agent_runner.run(params)
         if not result.payloads:
-            return
-
-
-        # Resolve plugin for delivery (direct-mode delivery is handled here).
-        plugin = self.registry.get_plugin(ctx.channel)
-        if not plugin:
-            raise ValueError(f"Unknown channel: {ctx.channel}")
-
-        # 将入站上下文的一部分透传到 OutboundPayload.extra，方便插件决定“发到哪里”。
-        inbound_for_plugin = {
-            "channel": ctx.channel,
-            "session_key": ctx.session_key,
-            "session_id": ctx.session_id,
-            "agent_id": ctx.agent_id,
-            "chat_type": ctx.chat_type,
-            "sender_id": ctx.sender_id,
-            "sender_name": ctx.sender_name,
-            "to": ctx.to,
-            "thread_id": ctx.thread_id,
-            "timestamp_ms": ctx.timestamp_ms,
-            "extra": dict(ctx.extra),
-        }
-
+            return None
+        # Collect all text payloads
+        texts = []
         for payload in result.payloads:
-            if not payload.text:
-                continue
-            await plugin.deliver(
-                OutboundPayload(
-                    text=payload.text,
-                    is_error=bool(payload.is_error),
-                    extra={
-                        "meta": {"status": str(result.meta.status)},
-                        "inbound": inbound_for_plugin,
-                    },
-                )
-            )
+            if payload.text:
+                texts.append(payload.text)
+        return "\n".join(texts) if texts else None
 
     async def run_channel(self, channel_id: str) -> None:
         plugin = self.registry.get_plugin(channel_id)
