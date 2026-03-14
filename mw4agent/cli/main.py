@@ -152,9 +152,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     # Register commands (lazy load if primary command specified)
     register_commands(program, ctx, primary_command=primary)
     
-    # Execute
+    # Execute (pass argv so tests can inject args; otherwise click uses sys.argv)
     try:
-        program()
+        if argv is not None:
+            program(args=argv[1:], prog_name=argv[0] if argv else None)
+        else:
+            program()
     except click.Abort:
         sys.exit(1)
     except Exception as e:

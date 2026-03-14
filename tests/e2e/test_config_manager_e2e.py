@@ -27,9 +27,10 @@ def config_manager(temp_config_dir: Path) -> ConfigManager:
 
 @pytest.fixture
 def secret_key(monkeypatch) -> str:
-    """Set up a test secret key."""
+    """Set up a test secret key and ensure encryption is enabled."""
     key = base64.b64encode(os.urandom(32)).decode("ascii")
     monkeypatch.setenv("MW4AGENT_SECRET_KEY", key)
+    monkeypatch.delenv("MW4AGENT_IS_ENC", raising=False)  # 确保加密开启，不受外部环境影响
     return key
 
 
@@ -122,8 +123,13 @@ def test_config_manager_plaintext_fallback(config_manager: ConfigManager, monkey
     assert loaded_data == config_data
 
 
-def test_get_default_config_manager(secret_key: str) -> None:
+def test_get_default_config_manager(tmp_path: Path, monkeypatch, secret_key: str) -> None:
     """Test get_default_config_manager returns a singleton."""
+    cfg_dir = tmp_path / ".mw4agent"
+    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
+    import mw4agent.config.manager as cfg_mod
+    cfg_mod._default_config_manager = None  # type: ignore[attr-defined]
+
     mgr1 = get_default_config_manager()
     mgr2 = get_default_config_manager()
     assert mgr1 is mgr2

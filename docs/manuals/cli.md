@@ -193,50 +193,56 @@ python -m mw4agent channels feishu run \
 
 ---
 
-## 5. `config` 命令组（加密配置读写）
+## 5. `config` 命令组（配置段读写）
 
-`config` 子命令封装了 `ConfigManager` 加密读写逻辑，用于统一管理诸如 `llm.json`、通道配置等敏感配置文件。
+所有配置项（llm、skills、channels 等）**默认统一存储**在单一文件 `~/.mw4agent/mw4agent.json` 中。`config` 子命令用于读写该文件中的**各个段（section）**。
 
-### 5.1 读取配置
+### 5.1 默认配置文件
 
-```bash
-python -m mw4agent config read llm
-```
+- **路径**：`~/.mw4agent/mw4agent.json`
+- **结构**：顶层键为配置段名，例如 `llm`、`skills`、`channels` 等，每段为一个 JSON 对象。
+- **加密**：若已配置加密（`MW4AGENT_SECRET_KEY` 等），整个文件会按加密框架存储；否则为明文 JSON。
 
-- 默认从 `~/.mw4agent/config/llm.json`（或 `MW4AGENT_CONFIG_DIR` 指定目录）读取；
-- 如果配置被加密，内部会自动解密；
-- 输出为格式化 JSON。
-
-如果希望得到一行原始 JSON：
+### 5.2 读取配置段
 
 ```bash
-python -m mw4agent config read llm --raw
+mw4agent config read llm
 ```
 
-### 5.2 写入配置
+- 从 `~/.mw4agent/mw4agent.json` 中读取 `llm` 段并输出；
+- 若该段不存在则输出 `{}`。
 
-从 JSON 文件写入（推荐方式）：
+输出单行原始 JSON：
 
 ```bash
-python -m mw4agent config write llm --input llm.json
+mw4agent config read llm --raw
 ```
 
-从 stdin 管道写入：
+也可读取其它段，如 `skills`、`channels`（若文件中已有对应键）。
+
+### 5.3 写入配置段
+
+从文件写入：
 
 ```bash
-echo '{"provider":"openai","model":"gpt-4o-mini"}' | \
-  python -m mw4agent config write llm --stdin
+mw4agent config write llm --input llm.json
 ```
 
-写入后，实际磁盘上的 `llm.json` 将以 AES-GCM 加密存储，只有在提供正确的 `MW4AGENT_SECRET_KEY` 时才能被解密读取。
+从 stdin 写入：
+
+```bash
+echo '{"provider":"openai","model_id":"gpt-4o-mini"}' | mw4agent config write llm --stdin
+```
+
+写入会**合并**到现有 `~/.mw4agent/mw4agent.json` 中：仅更新指定段，其它段保持不变。
 
 ---
 
 ## 6. `configuration` 命令组（交互式配置向导）
 
-`configuration` 命令组用于配置 **全局根配置文件**：
+`configuration` 命令组用于交互式编辑 **全局配置文件**（与 `config read/write` 同一文件）：
 
-- 路径：`~/.mw4agent/mw4agent.json`
+- 路径：`~/.mw4agent/mw4agent.json`（llm、skills、channels 等均存于此文件）
 - 内容示例：
 
 ```json

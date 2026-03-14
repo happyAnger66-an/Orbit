@@ -116,8 +116,13 @@ _default_config_manager: Optional[ConfigManager] = None
 
 
 def get_default_config_manager() -> ConfigManager:
-    """Get the default config manager instance."""
+    """Get the default config manager instance.
+
+    By default this returns a manager that reads/writes sections (llm, skills,
+    channels, etc.) of the single file ~/.mw4agent/mw4agent.json.
+    """
     global _default_config_manager
     if _default_config_manager is None:
-        _default_config_manager = ConfigManager()
+        from .root import RootConfigManager
+        _default_config_manager = RootConfigManager()
     return _default_config_manager

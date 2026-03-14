@@ -5,19 +5,100 @@
     <title>MW4Agent Dashboard</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <style>
+      /* Default: light */
       :root {
+        color-scheme: light;
+        --bg: #f1f5f9;
+        --bg-body: radial-gradient(circle at top, #e2e8f0 0, #f8fafc 40%, #f1f5f9 100%);
+        --panel: #ffffff;
+        --panel-border: rgba(148, 163, 184, 0.4);
+        --panel-header-border: rgba(148, 163, 184, 0.35);
+        --accent: #0284c7;
+        --accent-soft: rgba(2, 132, 199, 0.12);
+        --border: rgba(100, 116, 139, 0.4);
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --danger: #dc2626;
+        --radius-lg: 14px;
+        --radius-md: 10px;
+        --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.12);
+        --status-bg: rgba(241, 245, 249, 0.9);
+        --messages-bg: #f8fafc;
+        --messages-border: rgba(148, 163, 184, 0.35);
+        --msg-user-bg: rgba(2, 132, 199, 0.08);
+        --msg-user-border: rgba(2, 132, 199, 0.35);
+        --msg-assistant-bg: #f1f5f9;
+        --msg-assistant-border: rgba(148, 163, 184, 0.35);
+        --input-bg: #ffffff;
+        --input-border: rgba(100, 116, 139, 0.45);
+        --input-focus-border: rgba(2, 132, 199, 0.6);
+        --meta-item-bg: #f8fafc;
+        --meta-item-border: rgba(148, 163, 184, 0.35);
+        --meta-badge-bg: #f1f5f9;
+        --title-mark-inner: radial-gradient(circle at 30% 0, rgba(248, 250, 252, 0.9), transparent 52%),
+          radial-gradient(circle at 75% 75%, rgba(241, 245, 249, 0.95), #e2e8f0 72%);
+      }
+
+      [data-theme="soft-dark"] {
+        color-scheme: dark;
+        --bg: #1e293b;
+        --bg-body: radial-gradient(circle at top, #334155 0, #1e293b 45%, #0f172a 100%);
+        --panel: #334155;
+        --panel-border: rgba(148, 163, 184, 0.35);
+        --panel-header-border: rgba(51, 65, 85, 0.9);
+        --accent: #38bdf8;
+        --accent-soft: rgba(56, 189, 248, 0.15);
+        --border: rgba(148, 163, 184, 0.35);
+        --text-main: #e2e8f0;
+        --text-muted: #94a3b8;
+        --danger: #f87171;
+        --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.5);
+        --status-bg: rgba(30, 41, 59, 0.9);
+        --messages-bg: rgba(30, 41, 59, 0.85);
+        --messages-border: rgba(51, 65, 85, 0.9);
+        --msg-user-bg: rgba(56, 189, 248, 0.1);
+        --msg-user-border: rgba(56, 189, 248, 0.4);
+        --msg-assistant-bg: rgba(30, 41, 59, 0.9);
+        --msg-assistant-border: rgba(148, 163, 184, 0.35);
+        --input-bg: rgba(30, 41, 59, 0.9);
+        --input-border: rgba(148, 163, 184, 0.5);
+        --input-focus-border: rgba(56, 189, 248, 0.7);
+        --meta-item-bg: rgba(30, 41, 59, 0.85);
+        --meta-item-border: rgba(51, 65, 85, 0.9);
+        --meta-badge-bg: rgba(30, 41, 59, 0.9);
+        --title-mark-inner: radial-gradient(circle at 30% 0, rgba(248, 250, 252, 0.5), transparent 52%),
+          radial-gradient(circle at 75% 75%, rgba(30, 41, 59, 0.95), #1e293b 72%);
+      }
+
+      [data-theme="dark"] {
         color-scheme: dark;
         --bg: #050816;
+        --bg-body: radial-gradient(circle at top, #0f172a 0, #020617 38%, #000 100%);
         --panel: #0f172a;
+        --panel-border: rgba(148, 163, 184, 0.45);
+        --panel-header-border: rgba(30, 64, 175, 0.6);
         --accent: #38bdf8;
         --accent-soft: rgba(56, 189, 248, 0.12);
         --border: rgba(148, 163, 184, 0.35);
         --text-main: #e5e7eb;
         --text-muted: #9ca3af;
         --danger: #f97373;
-        --radius-lg: 14px;
-        --radius-md: 10px;
         --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.85);
+        --status-bg: rgba(15, 23, 42, 0.8);
+        --messages-bg: rgba(15, 23, 42, 0.9);
+        --messages-border: rgba(51, 65, 85, 0.9);
+        --msg-user-bg: rgba(56, 189, 248, 0.08);
+        --msg-user-border: rgba(56, 189, 248, 0.4);
+        --msg-assistant-bg: rgba(15, 23, 42, 0.9);
+        --msg-assistant-border: rgba(148, 163, 184, 0.35);
+        --input-bg: rgba(15, 23, 42, 0.92);
+        --input-border: rgba(148, 163, 184, 0.55);
+        --input-focus-border: rgba(56, 189, 248, 0.8);
+        --meta-item-bg: rgba(15, 23, 42, 0.85);
+        --meta-item-border: rgba(51, 65, 85, 0.85);
+        --meta-badge-bg: rgba(15, 23, 42, 0.9);
+        --title-mark-inner: radial-gradient(circle at 30% 0, rgba(248, 250, 252, 0.7), transparent 52%),
+          radial-gradient(circle at 75% 75%, rgba(15, 23, 42, 0.9), #020617 72%);
       }
 
       * {
@@ -27,7 +108,7 @@
       body {
         margin: 0;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-        background: radial-gradient(circle at top, #0f172a 0, #020617 38%, #000 100%);
+        background: var(--bg-body);
         color: var(--text-main);
         min-height: 100vh;
         display: flex;
@@ -71,8 +152,7 @@
         width: 100%;
         height: 100%;
         border-radius: inherit;
-        background: radial-gradient(circle at 30% 0, rgba(248, 250, 252, 0.7), transparent 52%),
-          radial-gradient(circle at 75% 75%, rgba(15, 23, 42, 0.9), #020617 72%);
+        background: var(--title-mark-inner);
       }
 
       .title-text-main {
@@ -92,8 +172,8 @@
         gap: 8px;
         padding: 6px 10px;
         border-radius: 999px;
-        background: rgba(15, 23, 42, 0.8);
-        border: 1px solid rgba(148, 163, 184, 0.45);
+        background: var(--status-bg);
+        border: 1px solid var(--border);
         font-size: 11px;
         color: var(--text-muted);
       }
@@ -119,6 +199,69 @@
         letter-spacing: 0.08em;
       }
 
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .lang-switcher {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+      }
+
+      .lang-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+      }
+
+      .lang-btn:hover {
+        color: var(--text-main);
+        background: var(--accent-soft);
+      }
+
+      .lang-btn.active {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .lang-sep {
+        color: var(--text-muted);
+        opacity: 0.6;
+      }
+
+      .theme-switcher {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .theme-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .theme-btn:hover {
+        color: var(--text-main);
+        background: var(--accent-soft);
+      }
+
+      .theme-btn.active {
+        color: var(--accent);
+      }
+
       .status-url {
         max-width: 220px;
         overflow: hidden;
@@ -140,9 +283,8 @@
 
       .panel {
         border-radius: var(--radius-lg);
-        background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.15), transparent 58%),
-          radial-gradient(circle at bottom right, rgba(30, 64, 175, 0.42), #020617);
-        border: 1px solid rgba(148, 163, 184, 0.45);
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
         box-shadow: var(--shadow-soft);
         overflow: hidden;
         display: flex;
@@ -151,7 +293,7 @@
 
       .panel-header {
         padding: 14px 16px 10px;
-        border-bottom: 1px solid rgba(30, 64, 175, 0.6);
+        border-bottom: 1px solid var(--panel-header-border);
         display: flex;
         align-items: baseline;
         justify-content: space-between;
@@ -163,7 +305,7 @@
         font-weight: 600;
         letter-spacing: 0.05em;
         text-transform: uppercase;
-        color: #e5e7eb;
+        color: var(--text-main);
       }
 
       .panel-subtitle {
@@ -186,8 +328,8 @@
         overflow: auto;
         padding: 8px 8px 4px;
         border-radius: var(--radius-md);
-        background: radial-gradient(circle at top left, rgba(15, 23, 42, 0.9), #020617);
-        border: 1px solid rgba(51, 65, 85, 0.9);
+        background: var(--messages-bg);
+        border: 1px solid var(--messages-border);
       }
 
       .msg {
@@ -199,13 +341,13 @@
       }
 
       .msg-user {
-        background: rgba(56, 189, 248, 0.08);
-        border: 1px solid rgba(56, 189, 248, 0.4);
+        background: var(--msg-user-bg);
+        border: 1px solid var(--msg-user-border);
       }
 
       .msg-assistant {
-        background: rgba(15, 23, 42, 0.9);
-        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: var(--msg-assistant-bg);
+        border: 1px solid var(--msg-assistant-border);
       }
 
       .msg-meta {
@@ -225,18 +367,18 @@
         min-height: 40px;
         max-height: 120px;
         border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.55);
+        border: 1px solid var(--input-border);
         padding: 10px 14px;
         font-size: 13px;
         color: var(--text-main);
-        background: radial-gradient(circle at top, rgba(15, 23, 42, 0.92), #020617);
+        background: var(--input-bg);
         outline: none;
         resize: none;
       }
 
       .chat-input:focus {
-        border-color: rgba(56, 189, 248, 0.8);
-        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4);
+        border-color: var(--input-focus-border);
+        box-shadow: 0 0 0 1px var(--accent-soft);
       }
 
       .button-primary {
@@ -245,7 +387,7 @@
         min-width: 80px;
         border: none;
         cursor: pointer;
-        background: linear-gradient(135deg, #38bdf8, #6366f1);
+        background: linear-gradient(135deg, var(--accent), #6366f1);
         color: white;
         font-size: 12px;
         font-weight: 600;
@@ -285,8 +427,8 @@
       .meta-item {
         padding: 9px 10px;
         border-radius: 10px;
-        background: radial-gradient(circle at top left, rgba(15, 23, 42, 0.85), #020617);
-        border: 1px solid rgba(51, 65, 85, 0.85);
+        background: var(--meta-item-bg);
+        border: 1px solid var(--meta-item-border);
       }
 
       .meta-label {
@@ -307,8 +449,8 @@
         gap: 5px;
         padding: 3px 8px;
         border-radius: 999px;
-        background: rgba(15, 23, 42, 0.9);
-        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: var(--meta-badge-bg);
+        border: 1px solid var(--border);
       }
 
       .footer-hint {
@@ -326,22 +468,34 @@
             <div class="title-mark-inner"></div>
           </div>
           <div>
-            <div class="title-text-main">MW4Agent Dashboard</div>
-            <div class="title-text-sub">Browser console · Gateway WebSocket + /rpc</div>
+            <div class="title-text-main" data-i18n="title">MW4Agent Dashboard</div>
+            <div class="title-text-sub" data-i18n="titleSub">Browser console · Gateway WebSocket + /rpc</div>
           </div>
         </div>
-        <div class="status" id="status-badge">
-          <div class="status-dot err" id="status-dot"></div>
-          <div class="status-label" id="status-label">DISCONNECTED</div>
-          <div class="status-url" id="status-url"></div>
+        <div class="header-actions">
+          <div class="theme-switcher" id="theme-switcher">
+            <button type="button" class="theme-btn" data-theme="light" title="Light">☀</button>
+            <button type="button" class="theme-btn" data-theme="soft-dark" title="Soft dark">◐</button>
+            <button type="button" class="theme-btn" data-theme="dark" title="Dark">◇</button>
+          </div>
+          <div class="lang-switcher" id="lang-switcher">
+            <button type="button" class="lang-btn" data-lang="zh-CN" title="中文">中文</button>
+            <span class="lang-sep">/</span>
+            <button type="button" class="lang-btn" data-lang="en" title="English">EN</button>
+          </div>
+          <div class="status" id="status-badge">
+            <div class="status-dot err" id="status-dot"></div>
+            <div class="status-label" id="status-label" data-i18n="statusDisconnected">DISCONNECTED</div>
+            <div class="status-url" id="status-url"></div>
+          </div>
         </div>
       </header>
 
       <main class="main">
         <section class="panel">
           <div class="panel-header">
-            <div class="panel-title">Chat</div>
-            <div class="panel-subtitle">Send a message via Gateway RPC and stream assistant events over WebSocket.</div>
+            <div class="panel-title" data-i18n="chat">Chat</div>
+            <div class="panel-subtitle" data-i18n="chatSubtitle">Send a message via Gateway RPC and stream assistant events over WebSocket.</div>
           </div>
           <div class="chat-body">
             <div class="messages" id="messages"></div>
@@ -350,11 +504,13 @@
                 id="chat-input"
                 class="chat-input"
                 rows="1"
+                data-i18n="placeholder"
+                data-i18n-placeholder
                 placeholder="Type a message to MW4Agent…"
               ></textarea>
               <button class="button-primary" id="send-btn">
                 <span class="icon">➤</span>
-                <span>Send</span>
+                <span data-i18n="send">Send</span>
               </button>
             </div>
           </div>
@@ -362,31 +518,31 @@
 
         <section class="panel">
           <div class="panel-header">
-            <div class="panel-title">Gateway</div>
-            <div class="panel-subtitle">Live connection state &amp; last run snapshot (minimal skeleton).</div>
+            <div class="panel-title" data-i18n="gateway">Gateway</div>
+            <div class="panel-subtitle" data-i18n="gatewaySubtitle">Live connection state &amp; last run snapshot (minimal skeleton).</div>
           </div>
           <div class="meta-panel">
             <div class="meta-grid">
               <div class="meta-item">
-                <div class="meta-label">WebSocket</div>
-                <div class="meta-value" id="meta-ws">Not connected</div>
+                <div class="meta-label" data-i18n="metaWs">WebSocket</div>
+                <div class="meta-value" id="meta-ws" data-i18n="notConnected">Not connected</div>
               </div>
               <div class="meta-item">
-                <div class="meta-label">RPC Endpoint</div>
+                <div class="meta-label" data-i18n="metaRpc">RPC Endpoint</div>
                 <div class="meta-value" id="meta-rpc">N/A</div>
               </div>
               <div class="meta-item">
-                <div class="meta-label">Last run</div>
+                <div class="meta-label" data-i18n="metaLastRun">Last run</div>
                 <div class="meta-value" id="meta-run">–</div>
               </div>
               <div class="meta-item">
-                <div class="meta-label">Events</div>
+                <div class="meta-label" data-i18n="metaEvents">Events</div>
                 <div class="meta-value">
-                  <span class="meta-badge"><span id="meta-events-total">0</span> total</span>
+                  <span class="meta-badge"><span id="meta-events-total">0</span> <span id="meta-events-unit" data-i18n="total">total</span></span>
                 </div>
               </div>
             </div>
-            <div class="footer-hint">
+            <div class="footer-hint" data-i18n="footerHint">
               This is a minimal skeleton. You can evolve it into a full Control UI (sessions, channels, skills, cron, etc.).
             </div>
           </div>

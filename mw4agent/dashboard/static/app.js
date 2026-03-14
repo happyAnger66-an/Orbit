@@ -1,3 +1,6 @@
+import { t, getLocale, setLocale, applyToPage } from "./i18n.js";
+import { getTheme, setTheme, applyTheme, getThemes } from "./theme.js";
+
 const messagesEl = document.getElementById("messages");
 const inputEl = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
@@ -35,17 +38,47 @@ function setWsStatus(connected) {
   if (connected) {
     statusDot.classList.remove("err");
     statusDot.classList.add("ok");
-    statusLabel.textContent = "CONNECTED";
-    metaWs.textContent = "Connected";
+    statusLabel.textContent = t("statusConnected");
+    metaWs.textContent = t("connected");
   } else {
     statusDot.classList.remove("ok");
     statusDot.classList.add("err");
-    statusLabel.textContent = "DISCONNECTED";
-    metaWs.textContent = "Not connected";
+    statusLabel.textContent = t("statusDisconnected");
+    metaWs.textContent = t("notConnected");
   }
 }
 
 function init() {
+  applyTheme();
+  applyToPage();
+
+  const themeSwitcher = document.getElementById("theme-switcher");
+  if (themeSwitcher) {
+    themeSwitcher.querySelectorAll(".theme-btn").forEach((btn) => {
+      const theme = btn.getAttribute("data-theme");
+      if (getTheme() === theme) btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        setTheme(theme);
+        applyTheme();
+        themeSwitcher.querySelectorAll(".theme-btn").forEach((b) => b.classList.toggle("active", b.getAttribute("data-theme") === theme));
+      });
+    });
+  }
+
+  const langSwitcher = document.getElementById("lang-switcher");
+  if (langSwitcher) {
+    langSwitcher.querySelectorAll(".lang-btn").forEach((btn) => {
+      const lang = btn.getAttribute("data-lang");
+      if (getLocale() === lang) btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        setLocale(lang);
+        applyToPage();
+        setWsStatus(ws && ws.readyState === WebSocket.OPEN);
+        langSwitcher.querySelectorAll(".lang-btn").forEach((b) => b.classList.toggle("active", b.getAttribute("data-lang") === lang));
+      });
+    });
+  }
+
   const loc = window.location;
   const baseHttp = `${loc.protocol}//${loc.host}`;
   const wsUrl = `${loc.protocol === "https:" ? "wss" : "ws"}://${loc.host}/ws`;
@@ -78,7 +111,8 @@ function init() {
       if (stream === "assistant" && data) {
         const text = data.text || data.delta || "";
         if (text) {
-          appendMessage("assistant", text, runId ? `assistant · run ${runId}` : "assistant");
+          const meta = runId ? `${t("metaAssistant")} · run ${runId}` : t("metaAssistant");
+          appendMessage("assistant", text, meta);
         }
       }
     } catch {
@@ -90,7 +124,7 @@ function init() {
     const text = inputEl.value.trim();
     if (!text) return;
     inputEl.value = "";
-    appendMessage("user", text, "you");
+    appendMessage("user", text, t("metaYou"));
 
     const idem = `dashboard-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const body = {
@@ -113,7 +147,7 @@ function init() {
         body: JSON.stringify(body),
       });
     } catch (err) {
-      appendMessage("assistant", `RPC error: ${err}`, "error");
+      appendMessage("assistant", `RPC error: ${err}`, t("metaError"));
     }
   });
 

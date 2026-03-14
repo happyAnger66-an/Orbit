@@ -86,6 +86,9 @@ def test_load_key_from_env_and_default_store(monkeypatch) -> None:
     """`_load_key_from_env` and `get_default_encrypted_store` obey env contract."""
     env_key = _random_key_b64(32)
     monkeypatch.setenv("MW4AGENT_SECRET_KEY", env_key)
+    monkeypatch.delenv("MW4AGENT_IS_ENC", raising=False)  # 确保加密开启，不受外部环境影响
+    import mw4agent.crypto.secure_io as secure_io_mod
+    secure_io_mod._default_store = None  # type: ignore[attr-defined]
 
     key = _load_key_from_env()
     assert key in (base64.b64decode(env_key), env_key.encode("utf-8"))

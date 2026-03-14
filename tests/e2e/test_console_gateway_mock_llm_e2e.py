@@ -141,17 +141,18 @@ def gateway_with_mock_llm(tmp_path: Path, mock_llm_server: int):
     env["MW4AGENT_OPENAI_BASE_URL"] = f"http://127.0.0.1:{mock_port}"
     env["OPENAI_API_KEY"] = "test-key"
 
-    # Write llm config (plaintext is fine; gateway will read via ConfigManager).
-    # We do this in the parent process so the child sees the file immediately.
-    from mw4agent.config import ConfigManager
-
-    mgr = ConfigManager(config_dir=str(cfg_dir))
-    mgr.write_config(
-        "llm",
-        {
-            "provider": "openai",
-            "model": "mock-gpt",
-        },
+    # Write root config with llm section (single file ~/.mw4agent/mw4agent.json or MW4AGENT_CONFIG_DIR/mw4agent.json).
+    # Gateway subprocess has MW4AGENT_CONFIG_DIR=cfg_dir, so it will read cfg_dir/mw4agent.json.
+    root_config = cfg_dir / "mw4agent.json"
+    root_config.parent.mkdir(parents=True, exist_ok=True)
+    root_config.write_text(
+        json.dumps({
+            "llm": {
+                "provider": "openai",
+                "model": "mock-gpt",
+            },
+        }),
+        encoding="utf-8",
     )
 
     cmd = [

@@ -26,9 +26,10 @@ def skill_manager(temp_skills_dir: Path) -> SkillManager:
 
 @pytest.fixture
 def secret_key(monkeypatch) -> str:
-    """Set up a test secret key."""
+    """Set up a test secret key and ensure encryption is enabled."""
     key = base64.b64encode(os.urandom(32)).decode("ascii")
     monkeypatch.setenv("MW4AGENT_SECRET_KEY", key)
+    monkeypatch.delenv("MW4AGENT_IS_ENC", raising=False)  # 确保加密开启，不受外部环境影响
     return key
 
 
@@ -130,8 +131,12 @@ def test_skill_manager_plaintext_fallback(skill_manager: SkillManager, monkeypat
     assert loaded_data == skill_data
 
 
-def test_get_default_skill_manager(secret_key: str) -> None:
+def test_get_default_skill_manager(tmp_path: Path, monkeypatch, secret_key: str) -> None:
     """Test get_default_skill_manager returns a singleton."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    import mw4agent.skills.manager as skill_mod
+    skill_mod._default_skill_manager = None  # type: ignore[attr-defined]
+
     mgr1 = get_default_skill_manager()
     mgr2 = get_default_skill_manager()
     assert mgr1 is mgr2

@@ -8,8 +8,12 @@ from mw4agent.cli.main import main as cli_main
 
 
 def _run_cli(argv: list[str]) -> None:
-    # 调用 CLI entrypoint，argv 第一个元素为程序名
-    cli_main(argv)
+    # 调用 CLI entrypoint，argv 第一个元素为程序名；Click 成功时会 sys.exit(0)
+    try:
+        cli_main(argv)
+    except SystemExit as e:
+        if e.code != 0:
+            raise
 
 
 @pytest.mark.parametrize("use_encryption", [False, True])
@@ -52,19 +56,11 @@ def test_configuration_set_llm_updates_root_config(tmp_path, monkeypatch, use_en
     cfg_path = Path(tmp_path) / ".mw4agent" / "mw4agent.json"
     assert cfg_path.exists()
 
-    # 配置文件在启用加密时会被加密存储，这里只关心通过 CLI 再读出来是否正确。
-    # 直接调用 CLI: configuration show --json
-    from io import StringIO
-    import sys
+    # 在同一进程中 read_root_config() 会使用已 patch 的 HOME，故可直接读取验证
+    from mw4agent.config import read_root_config
 
-    buf = StringIO()
-    monkeypatch.setattr(sys, "stdout", buf)
-
-    _run_cli(["mw4agent", "configuration", "show", "--json"])
-
-    output = buf.getvalue()
-    data = json.loads(output)
-
+    data = read_root_config()
+    assert "llm" in data
     assert data["llm"]["provider"] == provider
     assert data["llm"]["model_id"] == model_id
     assert data["llm"].get("base_url") == base_url

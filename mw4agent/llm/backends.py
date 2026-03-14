@@ -16,7 +16,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..agents.types import AgentRunParams
 from ..config import get_default_config_manager
-from ..config.root import read_root_config
 
 
 @dataclass
@@ -27,32 +26,13 @@ class LLMUsage:
 
 
 def _load_llm_config() -> Dict[str, Any]:
-    """Load LLM config from config files.
-
-    优先级（低 → 高）：
-    - 旧版加密配置 llm.json（~/.mw4agent/config/llm.json）
-    - 根配置 ~/.mw4agent/mw4agent.json 中的 llm 段
-    """
-    cfg: Dict[str, Any] = {}
-    # 1) 兼容旧版：llm.json
+    """Load LLM config from the default config store (~/.mw4agent/mw4agent.json, section \"llm\")."""
     try:
         mgr = get_default_config_manager()
-        legacy = mgr.read_config("llm", default={})
-        if isinstance(legacy, dict):
-            cfg.update(legacy)
+        cfg = mgr.read_config("llm", default={})
+        return cfg if isinstance(cfg, dict) else {}
     except Exception:
-        pass
-
-    # 2) 新版：根配置 mw4agent.json 下的 llm 段（具有更高优先级）
-    try:
-        root = read_root_config()
-        llm_root = root.get("llm")
-        if isinstance(llm_root, dict):
-            cfg.update(llm_root)
-    except Exception:
-        pass
-
-    return cfg
+        return {}
 
 
 def _call_openai_chat(

@@ -29,6 +29,8 @@ setup(
         "mw4agent": [
             "dashboard/static/index.html",
             "dashboard/static/app.js",
+            "dashboard/static/i18n.js",
+            "dashboard/static/theme.js",
         ],
     },
 )

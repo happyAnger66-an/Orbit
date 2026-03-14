@@ -1,4 +1,9 @@
-"""Register `mw4agent config` CLI commands for encrypted config read/write."""
+"""Register `mw4agent config` CLI commands for config read/write.
+
+All config sections (llm, skills, channels, etc.) are stored by default in
+~/.mw4agent/mw4agent.json. The `config read/write` commands operate on sections
+of that file.
+"""
 
 from __future__ import annotations
 
@@ -15,12 +20,15 @@ from ...config import get_default_config_manager
 def register_config_cli(program: click.Group, ctx: ProgramContext) -> None:
     """Register the `config` command group."""
 
-    @program.group("config", help="Read and write encrypted config files")
+    @program.group(
+        "config",
+        help="Read and write config sections in ~/.mw4agent/mw4agent.json (llm, skills, channels, etc.)",
+    )
     @click.pass_context
     def config_group(click_ctx: click.Context) -> None:  # pragma: no cover - wiring
         pass
 
-    @config_group.command("read", help="Read an encrypted config file and print JSON")
+    @config_group.command("read", help="Read a config section (e.g. llm, skills) and print JSON")
     @click.argument("name", metavar="NAME", nargs=1)
     @click.option(
         "--raw",
@@ -29,7 +37,7 @@ def register_config_cli(program: click.Group, ctx: ProgramContext) -> None:
         help="Print raw JSON without pretty formatting",
     )
     def config_read(name: str, raw_output: bool) -> None:
-        """Read a config by NAME (without .json) from the encrypted config store."""
+        """Read a config section by NAME from ~/.mw4agent/mw4agent.json."""
         mgr = get_default_config_manager()
         data = mgr.read_config(name, default={})
         if raw_output:
@@ -53,7 +61,7 @@ def register_config_cli(program: click.Group, ctx: ProgramContext) -> None:
         help="Read JSON payload from stdin",
     )
     def config_write(name: str, input_path: Optional[Path], from_stdin: bool) -> None:
-        """Write config by NAME (without .json) into the encrypted config store.
+        """Write a config section by NAME into ~/.mw4agent/mw4agent.json.
 
         Exactly one of --input / --stdin must be provided.
         """
@@ -63,7 +71,6 @@ def register_config_cli(program: click.Group, ctx: ProgramContext) -> None:
         if input_path:
             text = input_path.read_text(encoding="utf-8")
         else:
-            # Read from stdin
             text = click.get_text_stream("stdin").read()
 
         try:
@@ -72,9 +79,9 @@ def register_config_cli(program: click.Group, ctx: ProgramContext) -> None:
             raise click.ClickException(f"Invalid JSON: {e}") from e
 
         if not isinstance(obj, dict):
-            raise click.ClickException("Config root must be a JSON object")
+            raise click.ClickException("Config section must be a JSON object")
 
         mgr = get_default_config_manager()
         mgr.write_config(name, obj)
-        click.echo(f"Wrote encrypted config '{name}.json'")
+        click.echo(f"Wrote config section '{name}' to ~/.mw4agent/mw4agent.json")
 
