@@ -27,6 +27,8 @@ from ..events.stream import EventStream
 from ...llm import generate_reply, LLMUsage
 from ..skills.snapshot import build_skill_snapshot
 
+from mw4agent.log import get_logger
+logger = get_logger(__name__)
 
 class AgentRunner:
     """
@@ -179,6 +181,7 @@ class AgentRunner:
         started = time.time()
 
         # --- Attach skills snapshot to session & build prompt --------------
+        logger.info(f"Building skills snapshot for session {session_entry.session_id}")
         skills_snapshot = build_skill_snapshot()
         skills_prompt = ''
         if skills_snapshot.get("prompt"):

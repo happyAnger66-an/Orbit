@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -44,10 +46,18 @@ def _is_safe_rel_path(path: str) -> bool:
     return True
 
 
-def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
+def create_app(
+    *,
+    session_file: str = "mw4agent.sessions.json",
+    node_token: Optional[str] = None,
+) -> FastAPI:
     app = FastAPI(title="MW4Agent Gateway", version="0.1")
-
-    state = GatewayState()
+    if node_token is None:
+        t = os.environ.get("GATEWAY_NODE_TOKEN")
+        node_token = t.strip() if isinstance(t, str) and t.strip() else None
+    else:
+        node_token = node_token.strip() if isinstance(node_token, str) and node_token.strip() else None
+    state = GatewayState(node_token=node_token)
     session_manager = SessionManager(session_file)
     runner = AgentRunner(session_manager)
 
@@ -171,6 +181,126 @@ def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
             unregister()
         except Exception:
             unregister()
+
+    @app.websocket("/ws-node")
+    async def ws_node(ws: WebSocket):
+        """OpenClaw-compatible node connection: connect.challenge + connect (role=node) with auth."""
+        await ws.accept()
+        conn_id = str(uuid.uuid4())
+        # Send connect.challenge so client can send connect with optional auth
+        await ws.send_text(
+            json.dumps(
+                {
+                    "type": "event",
+                    "event": "connect.challenge",
+                    "payload": {"nonce": conn_id, "ts": _now_ms()},
+                },
+                ensure_ascii=False,
+            )
+        )
+        try:
+            while True:
+                raw = await ws.receive_text()
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if msg.get("type") != "req":
+                    continue
+                req_id = msg.get("id") or ""
+                method = msg.get("method") or ""
+                params = msg.get("params")
+                if not isinstance(params, dict):
+                    params = {}
+
+                def send_res(ok: bool, payload: Any = None, error: Any = None) -> None:
+                    asyncio.create_task(
+                        _send_node_res(ws, req_id, ok, payload=payload, error=error)
+                    )
+
+                if method == "connect":
+                    role = (params.get("role") or "").strip().lower()
+                    if role != "node":
+                        send_res(
+                            False,
+                            error={"code": "invalid_request", "message": "only role=node accepted on /ws-node"},
+                        )
+                        continue
+                    # Node authentication: if state.node_token is set, require params.auth.token to match
+                    if state.node_token is not None:
+                        auth = params.get("auth")
+                        token = auth.get("token") if isinstance(auth, dict) else None
+                        if not isinstance(token, str) or token.strip() != state.node_token:
+                            send_res(
+                                False,
+                                error={
+                                    "code": "invalid_request",
+                                    "message": "node authentication required (invalid or missing token)",
+                                },
+                            )
+                            continue
+                    client = params.get("client") or {}
+                    node_id = (client.get("id") or "").strip() or conn_id
+                    display_name = client.get("displayName") if isinstance(client.get("displayName"), str) else None
+                    platform_name = client.get("platform") if isinstance(client.get("platform"), str) else None
+                    caps = params.get("caps")
+                    commands = params.get("commands")
+                    if not isinstance(caps, list):
+                        caps = []
+                    if not isinstance(commands, list):
+                        commands = []
+                    state.node_registry.register(
+                        ws,
+                        node_id=node_id,
+                        conn_id=conn_id,
+                        display_name=display_name,
+                        platform=platform_name,
+                        caps=caps,
+                        commands=commands,
+                    )
+                    hello_ok = {
+                        "type": "hello-ok",
+                        "protocol": 1,
+                        "server": {"version": "0.1", "connId": conn_id},
+                        "features": {"methods": ["node.list", "node.invoke"], "events": ["node.invoke.request"]},
+                        "snapshot": {},
+                    }
+                    send_res(True, payload=hello_ok)
+                    continue
+
+                if method == "node.invoke.result":
+                    result_id = params.get("id") or ""
+                    result_node_id = params.get("nodeId") or ""
+                    ok = params.get("ok") is True
+                    state.node_registry.handle_invoke_result(
+                        request_id=result_id,
+                        node_id=result_node_id,
+                        ok=ok,
+                        payload=params.get("payload"),
+                        payload_json=params.get("payloadJSON"),
+                        error=params.get("error"),
+                    )
+                    send_res(True, payload={})
+                    continue
+
+                send_res(False, error={"code": "method_not_found", "message": f"Unknown method: {method}"})
+        except WebSocketDisconnect:
+            pass
+        except Exception:
+            pass
+        finally:
+            state.node_registry.unregister(conn_id)
+
+    async def _send_node_res(ws: WebSocket, req_id: str, ok: bool, payload: Any = None, error: Any = None) -> None:
+        try:
+            await ws.send_text(
+                json.dumps(
+                    {"type": "res", "id": req_id, "ok": ok, "payload": payload, "error": error},
+                    ensure_ascii=False,
+                )
+            )
+        except Exception:
+            pass
 
     @app.post("/rpc")
     async def rpc(body: Dict[str, Any]):
@@ -303,6 +433,37 @@ def create_app(*, session_file: str = "mw4agent.sessions.json") -> FastAPI:
             except Exception as e:
                 return {"id": req_id, "ok": False, "error": {"code": "not_found", "message": str(e)}}
             return {"id": req_id, "ok": True, "payload": {"path": path, "entries": entries}}
+
+        if method == "node.list":
+            nodes = state.node_registry.list_connected()
+            return {"id": req_id, "ok": True, "payload": {"ts": _now_ms(), "nodes": nodes}}
+
+        if method == "node.invoke":
+            node_id = str(params.get("nodeId") or "").strip()
+            command = str(params.get("command") or "").strip()
+            if not node_id or not command:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": "nodeId and command required"},
+                }
+            timeout_ms = 30_000
+            if isinstance(params.get("timeoutMs"), (int, float)) and params["timeoutMs"] > 0:
+                timeout_ms = int(params["timeoutMs"])
+            idem = str(params.get("idempotencyKey") or "")
+            invoke_params = params.get("params")
+            if not isinstance(invoke_params, dict):
+                invoke_params = {}
+            result = await state.node_registry.invoke(
+                node_id=node_id,
+                command=command,
+                params=invoke_params,
+                timeout_ms=timeout_ms,
+                idempotency_key=idem or None,
+            )
+            if not result.get("ok"):
+                return {"id": req_id, "ok": False, "error": result.get("error", {"code": "unavailable", "message": "node invoke failed"})}
+            return {"id": req_id, "ok": True, "payload": result.get("payload"), "payloadJSON": result.get("payloadJSON")}
 
         return {"id": req_id, "ok": False, "error": {"code": "method_not_found", "message": f"Unknown method: {method}"}}
 

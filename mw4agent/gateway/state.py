@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set, Tuple
 
+from .node_registry import NodeRegistry
 from .types import AgentEvent
 
 
@@ -42,10 +43,13 @@ class RunRecord:
 
 
 class GatewayState:
-    def __init__(self) -> None:
+    def __init__(self, *, node_token: Optional[str] = None) -> None:
         self.dedupe: Dict[str, DedupeEntry] = {}
         self.runs: Dict[str, RunRecord] = {}
         self.ws_clients: Set[asyncio.Queue] = set()
+        self.node_registry: NodeRegistry = NodeRegistry()
+        # Token required for node connect when set; when None, node connect is allowed without auth (dev).
+        self.node_token: Optional[str] = node_token
 
     def new_run_id(self) -> str:
         return str(uuid.uuid4())

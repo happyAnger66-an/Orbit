@@ -1,9 +1,10 @@
-"""LLM backends (echo + optional OpenAI Chat API).
+"""LLM backends: extensible provider registry (echo, OpenAI, DeepSeek, vLLM, etc.).
 
 Design:
-- Default backend is an 'echo' model (no external calls), so tests are stable.
-- When MW4AGENT_LLM_PROVIDER=openai and OPENAI_API_KEY is set, we call OpenAI's
-  chat completions API to get a real answer.
+- Default backend is 'echo' (no external calls) for stable tests.
+- HTTP-based providers use a single OpenAI-compatible Chat Completions caller.
+- New providers are added by registering a ProviderSpec in _OPENAI_COMPAT_SPECS;
+  each spec defines default base_url, default model, API key env var, and requirements.
 """
 
 from __future__ import annotations
@@ -25,6 +26,48 @@ class LLMUsage:
     total_tokens: Optional[int] = None
 
 
+@dataclass
+class _ProviderSpec:
+    """Spec for an OpenAI-compatible HTTP provider. Add an entry here to support a new provider."""
+
+    default_base_url: Optional[str] = None  # None = must come from config/env
+    default_model: str = ""
+    api_key_env: str = "MW4AGENT_LLM_API_KEY"
+    require_api_key: bool = True
+    base_url_required: bool = False  # True = no default_base_url, must set in config/env
+
+
+# Registry: provider_id -> ProviderSpec. Extend this to add new providers.
+_OPENAI_COMPAT_SPECS: Dict[str, _ProviderSpec] = {
+    "openai": _ProviderSpec(
+        default_base_url="https://api.openai.com",
+        default_model="gpt-4o-mini",
+        api_key_env="OPENAI_API_KEY",
+        require_api_key=True,
+    ),
+    "deepseek": _ProviderSpec(
+        default_base_url="https://api.deepseek.com",
+        default_model="deepseek-chat",
+        api_key_env="DEEPSEEK_API_KEY",
+        require_api_key=True,
+    ),
+    "vllm": _ProviderSpec(
+        default_base_url=None,
+        default_model="",
+        api_key_env="MW4AGENT_LLM_API_KEY",
+        require_api_key=False,
+        base_url_required=True,
+    ),
+    "aliyun-bailian": _ProviderSpec(
+        default_base_url=None,
+        default_model="",
+        api_key_env="MW4AGENT_LLM_API_KEY",
+        require_api_key=False,
+        base_url_required=True,
+    ),
+}
+
+
 def _load_llm_config() -> Dict[str, Any]:
     """Load LLM config from the default config store (~/.mw4agent/mw4agent.json, section \"llm\")."""
     try:
@@ -40,14 +83,16 @@ def _call_openai_chat(
     *,
     model: str,
     api_key: str,
-    base_url: Optional[str] = None,
+    base_url: str,
     timeout_s: float = 30.0,
 ) -> Tuple[str, LLMUsage]:
     """Call an OpenAI-compatible Chat Completions API (minimal subset)."""
-    effective_base = (
-        base_url or os.getenv("MW4AGENT_OPENAI_BASE_URL") or "https://api.openai.com"
-    ).rstrip("/")
-    url = f"{effective_base}/v1/chat/completions"
+    base = base_url.rstrip("/")
+    # Avoid double /v1 when user sets base_url to https://api.example.com/v1
+    if base.endswith("/v1"):
+        url = f"{base}/chat/completions"
+    else:
+        url = f"{base}/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -91,7 +136,6 @@ def generate_reply(params: AgentRunParams) -> Tuple[str, str, str, LLMUsage]:
     cfg_api_key: Optional[str] = None
     if isinstance(cfg, dict):
         cfg_provider = str(cfg.get("provider") or "").strip().lower()
-        # 兼容旧字段名 "model" 与新字段名 "model_id"
         cfg_model = str(cfg.get("model") or cfg.get("model_id") or "").strip()
         raw_base = str(cfg.get("base_url") or "").strip()
         cfg_base_url = raw_base or None
@@ -108,62 +152,53 @@ def generate_reply(params: AgentRunParams) -> Tuple[str, str, str, LLMUsage]:
         params.model
         or os.getenv("MW4AGENT_LLM_MODEL")
         or cfg_model
-        or "gpt-4o-mini"
     ).strip()
 
     # Echo backend (default, local only)
     if provider in ("", "echo", "debug"):
+        default_model = "gpt-4o-mini"  # for display only
         reply = f"Agent (echo) reply: {params.message}"
-        return reply, "echo", model, LLMUsage()
+        return reply, "echo", model or default_model, LLMUsage()
 
-    # OpenAI backend (requires OPENAI_API_KEY or cfg.api_key)
-    if provider == "openai":
-        api_key = os.getenv("OPENAI_API_KEY", "").strip() or (cfg_api_key or "")
-        if not api_key:
-            # Fallback to echo if no API key
-            reply = f"Agent (echo:no-api-key) reply: {params.message}"
-            return reply, "echo", model, LLMUsage()
-        prompt = params.message
-        if params.extra_system_prompt:
-            prompt = params.extra_system_prompt.strip() + "\n\n" + prompt
-        try:
-            text, usage = _call_openai_chat(
-                prompt,
-                model=model,
-                api_key=api_key,
-                base_url=cfg_base_url,
-            )
-            return text or "", provider, model, usage
-        except Exception as e:
-            # Fail closed to echo so agent仍可工作
-            fallback = f"Agent (openai-error) reply: {params.message}\n\n[error: {e}]"
-            return fallback, provider, model, LLMUsage()
-
-    # vLLM / 阿里云百炼等 OpenAI 兼容后端
-    if provider in ("vllm", "aliyun-bailian"):
-        # 优先使用配置中的 api_key/base_url，其次环境变量
-        api_key = (cfg_api_key or os.getenv("MW4AGENT_LLM_API_KEY", "").strip())
-        base_url = (cfg_base_url or os.getenv("MW4AGENT_LLM_BASE_URL", "").strip() or None)
-        if not base_url:
-            reply = f"Agent (echo:no-base-url:{provider}) reply: {params.message}"
-            return reply, "echo", model, LLMUsage()
-        # 对某些本地部署的 vLLM，可以无需 api_key；这里不强制要求
-        prompt = params.message
-        if params.extra_system_prompt:
-            prompt = params.extra_system_prompt.strip() + "\n\n" + prompt
-        try:
-            text, usage = _call_openai_chat(
-                prompt,
-                model=model,
-                api_key=api_key or "none",
-                base_url=base_url,
-            )
-            return text or "", provider, model, usage
-        except Exception as e:
-            fallback = f"Agent ({provider}-error) reply: {params.message}\n\n[error: {e}]"
-            return fallback, provider, model, LLMUsage()
+    # Resolve model default from provider spec if registered
+    spec = _OPENAI_COMPAT_SPECS.get(provider)
+    if spec and not model:
+        model = spec.default_model or ""
 
     # Unknown provider → echo
-    reply = f"Agent (unknown-provider:{provider}) reply: {params.message}"
-    return reply, provider or "echo", model, LLMUsage()
+    if spec is None:
+        reply = f"Agent (unknown-provider:{provider}) reply: {params.message}"
+        return reply, provider or "echo", model or "gpt-4o-mini", LLMUsage()
 
+    # Resolve base_url: config > env > spec default
+    base_url = cfg_base_url or os.getenv("MW4AGENT_LLM_BASE_URL", "").strip() or spec.default_base_url or ""
+    if spec.base_url_required and not base_url:
+        reply = f"Agent (echo:no-base-url:{provider}) reply: {params.message}"
+        return reply, "echo", model, LLMUsage()
+
+    # Resolve api_key: config > env
+    api_key = (cfg_api_key or os.getenv(spec.api_key_env, "").strip() or "")
+    if spec.require_api_key and not api_key:
+        reply = f"Agent (echo:no-api-key:{provider}) reply: {params.message}"
+        return reply, "echo", model, LLMUsage()
+
+    prompt = params.message
+    if params.extra_system_prompt:
+        prompt = params.extra_system_prompt.strip() + "\n\n" + prompt
+
+    try:
+        text, usage = _call_openai_chat(
+            prompt,
+            model=model or spec.default_model or "gpt-4o-mini",
+            api_key=api_key or "none",
+            base_url=base_url,
+        )
+        return text or "", provider, model or spec.default_model, usage
+    except Exception as e:
+        fallback = f"Agent ({provider}-error) reply: {params.message}\n\n[error: {e}]"
+        return fallback, provider, model, LLMUsage()
+
+
+def list_providers() -> Tuple[str, ...]:
+    """Return registered OpenAI-compatible provider ids (excluding echo)."""
+    return tuple(_OPENAI_COMPAT_SPECS.keys())

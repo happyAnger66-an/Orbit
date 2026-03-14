@@ -17,9 +17,12 @@ from ..agents.runner.runner import AgentRunner
 from ..agents.session.manager import SessionManager
 from ..agents.types import AgentRunParams
 from ..gateway.client import call_rpc
+from ..log import get_logger
 from .mention_gating import resolve_mention_gating
 from .registry import ChannelRegistry, get_channel_registry
 from .types import InboundContext, OutboundPayload
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,7 @@ class ChannelDispatcher:
     async def dispatch_inbound(self, ctx: InboundContext) -> None:
         plugin = self.registry.get_plugin(ctx.channel)
         if not plugin:
+            logger.error("unknown channel: %s", ctx.channel)
             raise ValueError(f"Unknown channel: {ctx.channel}")
 
         dock = self.registry.get_dock(ctx.channel)
@@ -47,18 +51,21 @@ class ChannelDispatcher:
             can_detect_mention=True,
             was_mentioned=ctx.was_mentioned,
         )
+        logger.debug("dispatch_inbound channel=%s gate.should_skip=%s", ctx.channel, gate.should_skip)
         if gate.should_skip:
+            logger.debug("skipping message due to mention gating")
             return
 
         # Call agent via Gateway RPC (aligned with OpenClaw) or direct AgentRunner
         if self.runtime.gateway_base_url:
-            # Gateway RPC path (aligned with OpenClaw design)
+            logger.debug("calling agent via gateway: %s", self.runtime.gateway_base_url)
             result_text = await self._call_agent_via_gateway(ctx)
         else:
-            # Direct AgentRunner path (simplified mode)
+            logger.debug("calling agent direct")
             result_text = await self._call_agent_direct(ctx)
 
         if result_text:
+            logger.info("channel=%s reply length=%s", ctx.channel, len(result_text))
             await plugin.deliver(
                 OutboundPayload(
                     text=result_text,
@@ -66,6 +73,8 @@ class ChannelDispatcher:
                     extra={},
                 )
             )
+        else:
+            logger.warning("channel=%s agent returned empty reply", ctx.channel)
 
     async def _call_agent_via_gateway(self, ctx: InboundContext) -> Optional[str]:
         """Call agent via Gateway RPC (aligned with OpenClaw)."""
@@ -80,23 +89,33 @@ class ChannelDispatcher:
             "agentId": ctx.agent_id,
             "idempotencyKey": idem_key,
         }
-        start_res = call_rpc(base_url=base_url, method="agent", params=agent_params, timeout_ms=30000)
+        try:
+            start_res = call_rpc(base_url=base_url, method="agent", params=agent_params, timeout_ms=30000)
+        except Exception as e:
+            logger.error("gateway agent RPC failed: %s", e, exc_info=True)
+            raise
 
         run_id = start_res.get("runId")
         if not run_id:
+            logger.warning("gateway agent returned no runId: %s", start_res)
             return None
 
         # Wait for completion
-        wait_res = call_rpc(
-            base_url=base_url,
-            method="agent.wait",
-            params={"runId": run_id, "timeoutMs": 30000},
-            timeout_ms=32000,
-        )
+        try:
+            wait_res = call_rpc(
+                base_url=base_url,
+                method="agent.wait",
+                params={"runId": run_id, "timeoutMs": 30000},
+                timeout_ms=32000,
+            )
+        except Exception as e:
+            logger.error("gateway agent.wait RPC failed: %s", e, exc_info=True)
+            raise
 
         payload = wait_res.get("payload", {})
         if payload.get("status") != "ok":
             error = payload.get("error")
+            logger.warning("gateway agent.wait status not ok: %s", error or payload)
             return f"[Error: {error}]" if error else None
 
         # Extract reply text from payload
@@ -113,8 +132,13 @@ class ChannelDispatcher:
             deliver=False,
             channel=ctx.channel,
         )
-        result = await self.runtime.agent_runner.run(params)
+        try:
+            result = await self.runtime.agent_runner.run(params)
+        except Exception as e:
+            logger.error("agent direct run failed: %s", e, exc_info=True)
+            raise
         if not result.payloads:
+            logger.debug("agent direct returned no payloads")
             return None
         # Collect all text payloads
         texts = []
@@ -126,6 +150,9 @@ class ChannelDispatcher:
     async def run_channel(self, channel_id: str) -> None:
         plugin = self.registry.get_plugin(channel_id)
         if not plugin:
+            logger.error("run_channel unknown channel: %s", channel_id)
             raise ValueError(f"Unknown channel: {channel_id}")
+        logger.info("run_channel starting: %s", channel_id)
         await plugin.run_monitor(on_inbound=self.dispatch_inbound)
+        logger.debug("run_channel ended: %s", channel_id)
 

@@ -15,6 +15,9 @@ setup(
         "httpx>=0.26.0",
         "pytest-asyncio>=0.21.0",
         "lark-oapi>=1.5.0",
+        "PyYAML>=6.0",
+        "questionary>=2.0.0",
+        "websockets>=12.0",
     ],
     entry_points={
         "console_scripts": [

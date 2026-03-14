@@ -26,7 +26,13 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
 
     @console_group.command(name="run", help="Run the console channel monitor")
     @click.option("--session-file", default="mw4agent.sessions.json", show_default=True)
-    def run_console(session_file: str) -> None:
+    @click.option(
+        "--gateway-url",
+        default="",
+        envvar="MW4AGENT_GATEWAY_URL",
+        help="If set, channel calls agent via Gateway RPC instead of direct; e.g. http://127.0.0.1:18790",
+    )
+    def run_console(session_file: str, gateway_url: str) -> None:
         async def _run() -> None:
             registry = get_channel_registry()
             if not registry.get_plugin("console"):
@@ -34,7 +40,13 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
 
             session_manager = SessionManager(session_file)
             runner = AgentRunner(session_manager)
-            dispatcher = ChannelDispatcher(ChannelRuntime(session_manager=session_manager, agent_runner=runner))
+            gateway_base_url = gateway_url.strip() or None
+            runtime = ChannelRuntime(
+                session_manager=session_manager,
+                agent_runner=runner,
+                gateway_base_url=gateway_base_url,
+            )
+            dispatcher = ChannelDispatcher(runtime)
             await dispatcher.run_channel("console")
 
         asyncio.run(_run())
@@ -46,7 +58,13 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
     @telegram_group.command(name="run", help="Run the Telegram bot channel (long polling)")
     @click.option("--session-file", default="mw4agent.sessions.json", show_default=True)
     @click.option("--bot-token", envvar="TELEGRAM_BOT_TOKEN", help="Telegram bot token (env TELEGRAM_BOT_TOKEN)")
-    def run_telegram(session_file: str, bot_token: str | None) -> None:
+    @click.option(
+        "--gateway-url",
+        default="",
+        envvar="MW4AGENT_GATEWAY_URL",
+        help="If set, channel calls agent via Gateway RPC; e.g. http://127.0.0.1:18790",
+    )
+    def run_telegram(session_file: str, bot_token: str | None, gateway_url: str) -> None:
         async def _run() -> None:
             registry = get_channel_registry()
             if not registry.get_plugin("telegram"):
@@ -54,7 +72,13 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
 
             session_manager = SessionManager(session_file)
             runner = AgentRunner(session_manager)
-            dispatcher = ChannelDispatcher(ChannelRuntime(session_manager=session_manager, agent_runner=runner))
+            gateway_base_url = gateway_url.strip() or None
+            runtime = ChannelRuntime(
+                session_manager=session_manager,
+                agent_runner=runner,
+                gateway_base_url=gateway_base_url,
+            )
+            dispatcher = ChannelDispatcher(runtime)
             await dispatcher.run_channel("telegram")
 
         asyncio.run(_run())
@@ -68,7 +92,13 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
     @click.option("--host", default="0.0.0.0", show_default=True, help="Webhook server host")
     @click.option("--port", default=8080, show_default=True, type=int, help="Webhook server port")
     @click.option("--path", default="/webhook", show_default=True, help="Webhook path")
-    def run_webhook(session_file: str, host: str, port: int, path: str) -> None:
+    @click.option(
+        "--gateway-url",
+        default="",
+        envvar="MW4AGENT_GATEWAY_URL",
+        help="If set, channel calls agent via Gateway RPC; e.g. http://127.0.0.1:18790",
+    )
+    def run_webhook(session_file: str, host: str, port: int, path: str, gateway_url: str) -> None:
         async def _run() -> None:
             registry = get_channel_registry()
             if not registry.get_plugin("webhook"):
@@ -76,7 +106,13 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
 
             session_manager = SessionManager(session_file)
             runner = AgentRunner(session_manager)
-            dispatcher = ChannelDispatcher(ChannelRuntime(session_manager=session_manager, agent_runner=runner))
+            gateway_base_url = gateway_url.strip() or None
+            runtime = ChannelRuntime(
+                session_manager=session_manager,
+                agent_runner=runner,
+                gateway_base_url=gateway_base_url,
+            )
+            dispatcher = ChannelDispatcher(runtime)
             await dispatcher.run_channel("webhook")
 
         asyncio.run(_run())
@@ -97,12 +133,19 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
         show_default=True,
         help="Feishu connection mode (webhook or websocket)",
     )
+    @click.option(
+        "--gateway-url",
+        default="",
+        envvar="MW4AGENT_GATEWAY_URL",
+        help="If set, channel calls agent via Gateway RPC; e.g. http://127.0.0.1:18790",
+    )
     def run_feishu(
         session_file: str,
         host: str,
         port: int,
         path: str,
         mode: str,
+        gateway_url: str,
     ) -> None:
         async def _run() -> None:
             registry = get_channel_registry()
@@ -118,7 +161,13 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
 
             session_manager = SessionManager(session_file)
             runner = AgentRunner(session_manager)
-            dispatcher = ChannelDispatcher(ChannelRuntime(session_manager=session_manager, agent_runner=runner))
+            gateway_base_url = gateway_url.strip() or None
+            runtime = ChannelRuntime(
+                session_manager=session_manager,
+                agent_runner=runner,
+                gateway_base_url=gateway_base_url,
+            )
+            dispatcher = ChannelDispatcher(runtime)
             await dispatcher.run_channel("feishu")
 
         asyncio.run(_run())

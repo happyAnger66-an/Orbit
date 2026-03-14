@@ -22,14 +22,17 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
     @click.option("--force", is_flag=True, help="Kill existing gateway on port")
     @click.option("--dev", is_flag=True, help="Dev profile")
     @click.option("--session-file", default="mw4agent.sessions.json", show_default=True, help="Session store file")
+    @click.option("--node-token", help="Token required for node connections (or set GATEWAY_NODE_TOKEN); omit to allow unauthenticated nodes (dev)")
     @click.pass_context
-    def gateway_run(ctx: click.Context, port: int, bind: str, force: bool, dev: bool, session_file: str):
+    def gateway_run(ctx: click.Context, port: int, bind: str, force: bool, dev: bool, session_file: str, node_token: Optional[str]):
         """Run the gateway"""
         click.echo(f"Running gateway on http://{bind}:{port}")
         if dev:
             click.echo("Dev profile enabled")
         if force:
             click.echo("Force mode is not implemented (no auto-kill).")
+        if node_token:
+            click.echo("Node authentication enabled (node token set)")
 
         from ...gateway.server import create_app  # local import to keep CLI light
 
@@ -38,7 +41,7 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
         except Exception as e:
             raise click.ClickException(f"uvicorn not available: {e}")
 
-        app = create_app(session_file=session_file)
+        app = create_app(session_file=session_file, node_token=node_token)
         uvicorn.run(app, host=bind, port=port, log_level="info")
 
     @gateway.command("status", help="Show gateway service status + probe the Gateway")

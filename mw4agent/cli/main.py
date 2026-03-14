@@ -6,11 +6,13 @@ from typing import Optional, List
 from .context import ProgramContext, create_program_context
 from .registry import get_registry, CommandEntry
 from .gateway import register_gateway_cli
+from .node_host import register_node_host_cli
 from .channels.register import register_channels_cli
 from .agent.register import register_agent_cli
 from .configuration import register_configuration_cli
 from .dashboard import register_dashboard_cli
 from .. import __version__
+from ..log import setup_logging
 
 
 def get_primary_command(argv: List[str]) -> Optional[str]:
@@ -70,6 +72,18 @@ def register_core_commands(program: click.Group, ctx: ProgramContext) -> None:
         register=register_gateway_cli,
     )
     get_registry().register_entry(gateway_entry)
+
+    node_host_entry = CommandEntry(
+        commands=[
+            {
+                "name": "node-host",
+                "description": "Run as an OpenClaw-compatible node (connect to Gateway, execute node.invoke)",
+                "has_subcommands": True,
+            }
+        ],
+        register=register_node_host_cli,
+    )
+    get_registry().register_entry(node_host_entry)
 
     agent_entry = CommandEntry(
         commands=[
@@ -139,6 +153,9 @@ def main(argv: Optional[List[str]] = None) -> None:
     """
     if argv is None:
         argv = sys.argv
+
+    # Async logging (console / file / log host via env); non-blocking
+    setup_logging()
 
     # Create program context
     ctx = create_program_context(__version__)

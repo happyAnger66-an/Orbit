@@ -154,3 +154,50 @@ def test_skill_manager_custom_directory(tmp_path: Path, secret_key: str) -> None
     assert (custom_dir / "custom.json").exists()
     loaded = mgr.read_skill("custom")
     assert loaded == skill_data
+
+
+def test_skill_manager_markdown_and_skill_md(
+    skill_manager: SkillManager, tmp_path: Path, secret_key: str
+) -> None:
+    """Test reading Markdown skills: <name>.md and <name>/SKILL.md (OpenClaw compatible)."""
+    skills_dir = Path(skill_manager.skills_dir)
+
+    # Write JSON skill (existing behavior)
+    skill_manager.write_skill("json_skill", {"name": "JSON", "description": "From JSON"})
+    assert (skills_dir / "json_skill.json").exists()
+
+    # Write <name>.md
+    md_content = """---
+name: md_skill
+description: From single .md file.
+---
+# Markdown skill
+"""
+    (skills_dir / "md_skill.md").write_text(md_content, encoding="utf-8")
+
+    # Write <name>/SKILL.md (OpenClaw style)
+    skill_dir = skills_dir / "openclaw_skill"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_md = """---
+name: openclaw_skill
+description: From SKILL.md in directory.
+---
+# OpenClaw SKILL.md
+"""
+    (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
+
+    names = skill_manager.list_skills()
+    assert "json_skill" in names
+    assert "md_skill" in names
+    assert "openclaw_skill" in names
+
+    j = skill_manager.read_skill("json_skill")
+    assert j is not None and j.get("description") == "From JSON"
+
+    m = skill_manager.read_skill("md_skill")
+    assert m is not None and m.get("description") == "From single .md file."
+    assert "content" in m
+
+    o = skill_manager.read_skill("openclaw_skill")
+    assert o is not None and o.get("description") == "From SKILL.md in directory."
+    assert "OpenClaw SKILL.md" in (o.get("content") or "")

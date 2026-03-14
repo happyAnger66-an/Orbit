@@ -1,6 +1,7 @@
 """Configuration CLI for MW4Agent.
 
 Phase 1: configure LLM provider/model and store in ~/.mw4agent/mw4agent.json.
+Interactive wizard uses a list selector (arrow keys / Space to select, Enter to confirm).
 
 Reserved for future extensions:
 - channels configuration
@@ -10,11 +11,17 @@ Reserved for future extensions:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import click
 
 from ..config.root import get_root_config_path, read_root_config, write_root_config
+from ..llm import list_providers
+
+
+def _llm_provider_choices() -> List[str]:
+    """Return ordered list of provider ids for LLM (echo + registered HTTP providers)."""
+    return ["echo"] + list(list_providers())
 
 
 def _update_llm_section(
@@ -36,6 +43,25 @@ def _update_llm_section(
     return next_cfg
 
 
+def _prompt_provider_list(current_provider: Optional[str]) -> Optional[str]:
+    """Show a list of providers; user moves with arrow keys, Space/Enter to select. Returns selected or None if cancelled."""
+    try:
+        import questionary
+    except ImportError:
+        return None
+    choices = _llm_provider_choices()
+    default = (current_provider or "echo").strip().lower()
+    if default not in choices:
+        default = choices[0]
+    prompt = questionary.select(
+        "Select LLM provider (↑/↓ move, Enter confirm)",
+        choices=choices,
+        default=default,
+    )
+    result = prompt.ask()
+    return str(result).strip() if result else None
+
+
 def _run_interactive_wizard() -> None:
     """Run an interactive configuration wizard (LLM first, reserved for more sections)."""
     click.echo("MW4Agent configuration wizard")
@@ -54,12 +80,19 @@ def _run_interactive_wizard() -> None:
         click.echo("")
 
     if click.confirm("Configure LLM provider/model now?", default=True):
-        provider = click.prompt(
-            "Select provider [vllm/aliyun-bailian]",
-            type=click.Choice(["vllm", "aliyun-bailian"], case_sensitive=False),
-            default=str(llm.get("provider") or "vllm"),
-            show_default=True,
-        )
+        provider = _prompt_provider_list(str(llm.get("provider") or "").strip() or None)
+        if provider is None:
+            # Fallback when questionary not available or user cancelled
+            choices = _llm_provider_choices()
+            provider = click.prompt(
+                "Select provider",
+                type=click.Choice(choices, case_sensitive=False),
+                default=str(llm.get("provider") or "echo"),
+                show_default=True,
+            )
+        else:
+            provider = provider.lower()
+
         default_model = str(llm.get("model_id") or "").strip() or "YOUR_MODEL_ID"
         model_id = click.prompt(
             "Model ID",
@@ -103,6 +136,8 @@ def _run_interactive_wizard() -> None:
 
 
 def register_configuration_cli(program: click.Group, _ctx) -> None:
+    _provider_choices = _llm_provider_choices()
+
     @program.group(
         name="configuration",
         help="Configure MW4Agent (LLM, channels, skills, etc.)",
@@ -117,9 +152,9 @@ def register_configuration_cli(program: click.Group, _ctx) -> None:
     @configuration_group.command(name="set-llm", help="Set LLM provider and model id")
     @click.option(
         "--provider",
-        type=click.Choice(["vllm", "aliyun-bailian"], case_sensitive=False),
+        type=click.Choice(_provider_choices, case_sensitive=False),
         required=True,
-        help="LLM provider (vllm or aliyun-bailian)",
+        help="LLM provider: " + ", ".join(_provider_choices),
     )
     @click.option(
         "--model-id",
@@ -180,4 +215,3 @@ def register_configuration_cli(program: click.Group, _ctx) -> None:
                     click.echo("  api_key : ********")
             else:
                 click.echo("LLM configuration: not set")
-

@@ -5,8 +5,8 @@
       "session_key": "console:main",
       "agent_id": "main",
       "created_at": 1773211345822,
-      "updated_at": 1773317071826,
-      "message_count": 6,
+      "updated_at": 1773457678132,
+      "message_count": 14,
       "total_tokens": 0,
       "metadata": {}
     },
@@ -15,8 +15,8 @@
       "session_key": "dashboard",
       "agent_id": "dashboard",
       "created_at": 1773415151845,
-      "updated_at": 1773451335295,
-      "message_count": 3,
+      "updated_at": 1773458393868,
+      "message_count": 4,
       "total_tokens": 0,
       "metadata": {}
     }
