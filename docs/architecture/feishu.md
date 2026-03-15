@@ -180,3 +180,78 @@ RuntimeError: this event loop is already running.
    在 `_run_ws()` 的 `finally` 里对 `ws_loop.close()`，以便在线程退出或异常时释放资源（若 `start()` 一直阻塞不返回，则不会执行到 close，属预期）。
 
 实现上，将「创建 `lark.ws.Client` 并调用 `start()`」从主线程挪到 `_run_ws()` 内部，在 `_run_ws()` 开头完成上述 1、2 步后再创建 Client 并 start。相关代码见 `mw4agent/channels/plugins/feishu.py` 中 `_run_ws_monitor` 的 `_run_ws()` 定义。
+
+---
+
+# 聊天时「思考/正在输入」表情（消息下方）如何实现
+
+OpenClaw 飞书插件在用户发消息后、机器人回复前，会在**用户那条消息下方**显示一个「正在输入」/思考态的表情（如铅笔或思考 emoji）。本节说明其实现方式，便于在 mw4agent 中复现。
+
+---
+
+## 原理
+
+飞书**没有**类似 Slack 的「typing indicator」专用 API，因此 OpenClaw 用 **消息表情回复（Message Reaction）** 来模拟：
+
+- 在**用户的消息**上添加一个 **emoji 反应**（显示在该消息下方），表示「机器人正在处理」；
+- 当回复发送完成（或取消）后，**删除**该表情反应。
+
+这样用户能看到「这条消息下面有个表情 → 机器人正在想/在打字」的视觉反馈。
+
+---
+
+## 实现要点（feishu-openclaw-plugin）
+
+### 1. 使用的 API
+
+- **添加表情**：飞书 Open API **消息表情回复 - 添加**  
+  `POST /im/v1/messages/{message_id}/reactions`  
+  请求体包含 `reaction_type.emoji_type`（如 `"Typing"` 或 `"THINKING"`），返回 `reaction_id`。
+- **删除表情**：**消息表情回复 - 删除**  
+  `DELETE /im/v1/messages/{message_id}/reactions/{reaction_id}`  
+  用添加时返回的 `reaction_id` 删除。
+
+（具体调用方式以 lark-oapi / 飞书开放平台文档为准；插件里通过 `client.im.messageReaction.create` / `client.im.messageReaction.delete` 封装。）
+
+### 2. Emoji 类型
+
+- **Typing**：飞书内置的「正在输入」动效（铅笔/键盘），适合「正在打字」的语义。  
+  OpenClaw 的「思考/输入中」指示器**默认用的就是这个**（见 `typing.js` 中 `TYPING_EMOJI_TYPE = "Typing"`）。
+- **THINKING**：飞书内置的「思考」表情，若希望更偏向「思考中」可改用 `emoji_type: "THINKING"`。  
+  插件在 `reactions.js` 中定义了 `FeishuEmoji.THINKING` / `FeishuEmoji.TYPING`，均可在添加 reaction 时使用。
+
+### 3. 调用时机（与回复流程绑定）
+
+- **开始回复时**：在真正发内容之前，先对**用户消息的 message_id** 调用「添加 reaction」（Typing 或 THINKING），并保存返回的 `reaction_id`。
+- **结束/取消时**：在「回复已发送」或「取消回复/出错」时，用保存的 `reaction_id` 调用「删除 reaction」。
+
+在 OpenClaw 里，这一逻辑挂在 **reply dispatcher** 的 typing 回调上：
+
+- `createFeishuReplyDispatcher`（`card/reply-dispatcher.js`）里使用 OpenClaw SDK 的 `createTypingCallbacks({ start, stop })`。
+- **start**：调用 `addTypingIndicator({ cfg, messageId: replyToMessageId, accountId })`，内部即对用户消息加 Typing reaction，并返回 `{ messageId, reactionId }`。
+- **stop**：调用 `removeTypingIndicator({ cfg, state: typingState, accountId })`，用之前的 `reactionId` 删掉该 reaction。
+
+因此「思考/输入中」的显示时长 = 从「开始回复」到「回复完成或取消」的这段时间。
+
+### 4. 可选行为
+
+- **skipTyping**：部分场景（如 `/new`、`/reset` 等）不需要显示输入指示器，可通过 `skipTyping: true` 跳过 add/remove。
+- 添加/删除 reaction 的失败做 **静默处理**（日志即可），不阻塞正常发消息，避免因权限或限流导致回复发不出去。
+
+---
+
+## 相关代码位置（feishu-openclaw-plugin）
+
+| 位置 | 说明 |
+|------|------|
+| `src/messaging/outbound/typing.js` | `addTypingIndicator` / `removeTypingIndicator`：对用户消息加/删 Typing reaction，内部调 `messageReaction.create` / `messageReaction.delete` |
+| `src/messaging/outbound/reactions.js` | `addReactionFeishu` 等通用 reaction 封装；`FeishuEmoji.TYPING` / `FeishuEmoji.THINKING` 常量 |
+| `src/card/reply-dispatcher.js` | `createFeishuReplyDispatcher` 中 `createTypingCallbacks` 的 `start`/`stop` 分别调上述 add/remove，与回复生命周期绑定 |
+
+---
+
+## 在 mw4agent 中复现的思路
+
+1. **飞书 API**：在 `mw4agent` 的 Feishu 客户端中增加「消息表情回复」的添加/删除接口（或直接调用现有 HTTP 封装），对应飞书文档的 `reaction_type.emoji_type` 与 `reaction_id`。
+2. **时机**：在 `ChannelDispatcher.dispatch_inbound` 中，在调用 agent 之前对 `ctx.extra["message_id"]` 添加 reaction（如 Typing 或 THINKING），在 `deliver` 完成或异常时删除该 reaction（需要保存返回的 `reaction_id`）。
+3. **可选**：通过配置或 channel 参数选择是否开启「思考/输入中」指示器，以及使用 `Typing` 还是 `THINKING` emoji。

@@ -148,3 +148,52 @@ class FeishuClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def add_reaction(
+        self,
+        *,
+        message_id: str,
+        emoji_type: str = "Typing",
+    ) -> Optional[str]:
+        """在指定消息上添加表情回复（如 Typing/THINKING），返回 reaction_id。失败返回 None。"""
+        # 合成 ID 如 "om_xxx:suffix" 只取前半部分
+        if ":" in message_id:
+            message_id = message_id.split(":")[0]
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        url = f"{self._base}/im/v1/messages/{message_id}/reactions"
+        payload = {"reaction_type": {"emoji_type": emoji_type}}
+        try:
+            async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+                resp = await client.post(url, json=payload)
+                resp.raise_for_status()
+                data: Dict[str, Any] = resp.json()
+            if data.get("code") != 0:
+                return None
+            return str((data.get("data") or {}).get("reaction_id") or "")
+        except Exception:
+            return None
+
+    async def remove_reaction(
+        self,
+        *,
+        message_id: str,
+        reaction_id: str,
+    ) -> None:
+        """删除指定消息上的表情回复。静默忽略错误。"""
+        if ":" in message_id:
+            message_id = message_id.split(":")[0]
+        if not reaction_id:
+            return
+        token = await self._get_tenant_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{self._base}/im/v1/messages/{message_id}/reactions/{reaction_id}"
+        try:
+            async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+                resp = await client.delete(url)
+                resp.raise_for_status()
+        except Exception:
+            pass
+

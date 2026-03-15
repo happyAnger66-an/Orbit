@@ -56,32 +56,45 @@ class ChannelDispatcher:
             logger.debug("skipping message due to mention gating")
             return
 
-        # Call agent via Gateway RPC (aligned with OpenClaw) or direct AgentRunner
-        if self.runtime.gateway_base_url:
-            logger.debug("calling agent via gateway: %s", self.runtime.gateway_base_url)
-            result_text = await self._call_agent_via_gateway(ctx)
-        else:
-            logger.debug("calling agent direct")
-            result_text = await self._call_agent_direct(ctx)
+        # Feishu：在用户消息下添加「思考/正在输入」表情，回复完成或异常后移除（与 OpenClaw 一致）
+        typing_state = None
+        if ctx.channel == "feishu" and isinstance(ctx.extra, dict):
+            msg_id = ctx.extra.get("message_id") or ctx.extra.get("messageId")
+            if msg_id:
+                from .feishu_outbound import add_typing_indicator
+                typing_state = await add_typing_indicator(str(msg_id))
 
-        if result_text:
-            logger.info("channel=%s reply length=%s", ctx.channel, len(result_text))
-            # 将入站 extra（chat_id/message_id）与 session_id 传给 deliver，供 Feishu 等回发到正确会话
-            extra = {
-                "inbound": {
-                    "extra": ctx.extra if isinstance(ctx.extra, dict) else {},
-                    "session_id": ctx.session_id,
+        try:
+            # Call agent via Gateway RPC (aligned with OpenClaw) or direct AgentRunner
+            if self.runtime.gateway_base_url:
+                logger.debug("calling agent via gateway: %s", self.runtime.gateway_base_url)
+                result_text = await self._call_agent_via_gateway(ctx)
+            else:
+                logger.debug("calling agent direct")
+                result_text = await self._call_agent_direct(ctx)
+
+            if result_text:
+                logger.info("channel=%s reply length=%s", ctx.channel, len(result_text))
+                # 将入站 extra（chat_id/message_id）与 session_id 传给 deliver，供 Feishu 等回发到正确会话
+                extra = {
+                    "inbound": {
+                        "extra": ctx.extra if isinstance(ctx.extra, dict) else {},
+                        "session_id": ctx.session_id,
+                    }
                 }
-            }
-            await plugin.deliver(
-                OutboundPayload(
-                    text=result_text,
-                    is_error=False,
-                    extra=extra,
+                await plugin.deliver(
+                    OutboundPayload(
+                        text=result_text,
+                        is_error=False,
+                        extra=extra,
+                    )
                 )
-            )
-        else:
-            logger.warning("channel=%s agent returned empty reply", ctx.channel)
+            else:
+                logger.warning("channel=%s agent returned empty reply", ctx.channel)
+        finally:
+            if typing_state is not None:
+                from .feishu_outbound import remove_typing_indicator
+                await remove_typing_indicator(typing_state)
 
     async def _call_agent_via_gateway(self, ctx: InboundContext) -> Optional[str]:
         """Call agent via Gateway RPC (aligned with OpenClaw)."""
