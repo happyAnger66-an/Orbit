@@ -1,0 +1,45 @@
+# MW4Agent Gateway systemd unit (align with OpenClaw openclaw-gateway.service usage).
+#
+# Install:
+#   sudo cp scripts/systemd/mw4agent-gateway.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable mw4agent-gateway.service
+#   sudo systemctl start mw4agent-gateway.service
+#
+# Optional override (create /etc/default/mw4agent-gateway or use systemctl edit):
+#   MW4AGENT_GATEWAY_BIND=0.0.0.0
+#   MW4AGENT_GATEWAY_PORT=18790
+#   MW4AGENT_STATE_DIR=/var/lib/mw4agent
+#   MW4AGENT_SESSION_FILE=mw4agent.sessions.json
+#
+# Then in [Service] add:
+#   EnvironmentFile=-/etc/default/mw4agent-gateway
+#   ExecStart=... --bind ${MW4AGENT_GATEWAY_BIND} --port ${MW4AGENT_GATEWAY_PORT} --session-file ${MW4AGENT_STATE_DIR}/${MW4AGENT_SESSION_FILE}
+# (systemd does not expand variables in ExecStart; use a wrapper script or override ExecStart with full path.)
+
+[Unit]
+Description=MW4Agent Gateway (WebSocket + HTTP RPC)
+Documentation=https://github.com/your-org/mw4agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as dedicated user (create with: useradd -r -s /bin/false mw4agent)
+User=mw4agent
+Group=mw4agent
+# Optional: load env from file (bind/port/session-file can be set there)
+EnvironmentFile=-/etc/default/mw4agent-gateway
+# State dir for session file and config lookup
+WorkingDirectory=/var/lib/mw4agent
+# Gateway listen address and port (default 0.0.0.0:18790)
+ExecStart=/usr/bin/python3 -m mw4agent gateway run --bind 0.0.0.0 --port 18790 --session-file mw4agent.sessions.json
+Restart=on-failure
+RestartSec=10
+# Log to journal; stdout/stderr go to systemd
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mw4agent-gateway
+
+[Install]
+WantedBy=multi-user.target
