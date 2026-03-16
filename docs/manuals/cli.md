@@ -327,7 +327,124 @@ mw4agent configuration show --json
 
 ---
 
-## 7. `dashboard` 命令（Web 控制台）
+## 7. `configuration auth`：工具权限（tools policy）配置
+
+`configuration auth` 子命令用于配置和检查 **tools 权限策略**（全局 / 按 channel / 按 user / 按 channel+user），底层写入 `~/.mw4agent/mw4agent.json` 中的 `tools` 段，与 Runner 中的 `ToolPolicyConfig` / `resolve_effective_policy_for_context` 保持一致。
+
+### 7.1 交互式向导：`configuration auth wizard`
+
+最推荐的方式是用交互向导一步步配置：
+
+```bash
+mw4agent configuration auth wizard
+```
+
+向导流程大致为：
+
+- 选择 **scope**：
+  - `global`：全局默认（`tools.profile/allow/deny`）；
+  - `by_channel`：按 channel（如 feishu/telegram/console/webhook）；
+  - `by_user`：按 user（区分 owner/user）；
+  - `by_channel_user`：按 channel+user 组合（最高优先级）。
+- 根据 scope 递进式询问：
+  - `channel`（例如 `feishu`）；
+  - `user-id`（例如 Feishu open_id、Telegram user id 等）；
+  - 是否 owner（owner/user）。
+- 选择 **profile**：`minimal` / `coding` / `full`；
+- 可选多次添加 **allow / deny** 规则（工具名或 glob，如 `write`、`memory_*`）；
+- 展示预览（当前 `tools` 段 JSON），最后确认是否写入。
+
+写入结果示例：
+
+```jsonc
+{
+  "tools": {
+    "profile": "coding",
+    "by_channel": {
+      "feishu": { "profile": "coding", "deny": ["write", "memory_write"] }
+    },
+    "by_channel_user": {
+      "feishu:ou_owner": { "profile": "full" }
+    }
+  }
+}
+```
+
+### 7.2 非交互配置：`configuration auth set`
+
+当你想脚本化或一次性写入某个 scope 时，可以使用非交互命令：
+
+```bash
+mw4agent configuration auth set \
+  --scope by_channel \
+  --channel feishu \
+  --profile coding \
+  --deny write \
+  --deny memory_write
+```
+
+常用参数：
+
+- `--scope`：`global` / `by_channel` / `by_user` / `by_channel_user`；
+- `--channel`：scope 为 `by_channel`/`by_channel_user` 时必填；
+- `--user-id`：scope 为 `by_user`/`by_channel_user` 时必填；
+- `--owner/--user`：scope 为 `by_user` 时区分 owner:user 前缀；
+- `--profile`：`minimal` / `coding` / `full`；
+- `--allow`：追加 allow 规则（可多次出现）；
+- `--deny`：追加 deny 规则（可多次出现）；
+- `--clear-allow` / `--clear-deny`：先清空对应列表再追加。
+
+### 7.3 查看当前 tools 策略：`configuration auth show`
+
+```bash
+mw4agent configuration auth show
+```
+
+- 默认以 JSON pretty-print 输出 `tools` 段；
+- 加 `--json` 时只输出 JSON，方便和其它工具联动：
+
+```bash
+mw4agent configuration auth show --json
+```
+
+### 7.4 计算某个上下文的“有效权限”：`configuration auth effective`
+
+为了确认某个 channel / user / owner 组合下**最终能用哪些工具**，可以运行：
+
+```bash
+mw4agent configuration auth effective \
+  --channel feishu \
+  --user-id ou_xxx \
+  --owner \
+  --authorized \
+  --json
+```
+
+输出示例：
+
+```json
+{
+  "context": {
+    "channel": "feishu",
+    "user_id": "ou_xxx",
+    "owner": true,
+    "authorized": true
+  },
+  "effectivePolicy": {
+    "profile": "coding",
+    "allow": ["memory_search"],
+    "deny": ["write", "memory_write"]
+  },
+  "allowedTools": ["read", "memory_search", "memory_get", "memory_write"]
+}
+```
+
+- `effectivePolicy`：Runner 实际使用的 ToolPolicy（profile/allow/deny 合并后的结果）；
+- `allowedTools`：在 `profile` + `allow/deny` + `owner_only` 过滤后，最终暴露给 LLM 的工具列表。
+
+---
+
+## 8. `dashboard` 命令（Web 控制台）
 
 `dashboard` 命令用于快速打开基于浏览器的 **MW4Agent 控制台**，它通过：
 
@@ -375,7 +492,7 @@ mw4agent dashboard --url http://127.0.0.1:18790
 mw4agent dashboard --no-open
 ```
 
-### 7.3 当前 Dashboard 能做什么（骨架版）
+### 8.3 当前 Dashboard 能做什么（骨架版）
 
 当前版本的 Dashboard 是一个 **骨架实现**，主要用于验证端到端链路是否打通：
 
@@ -395,12 +512,12 @@ mw4agent dashboard --no-open
 
 ---
 
-## 8. 小结
+## 9. 小结
 
 - 使用 `gateway run` + `channels console run` 可以在本机快速搭建一个“Gateway + Console Chat”的测试环境；
 - 使用 `agent run` 可以脚本化触发单次 Agent 回合（支持在调用前执行工具）；
 - 使用 `config read/write` 可以安全地管理加密配置（LLM provider、通道配置等），避免手工处理加密细节；
 - 使用 `configuration` 可以以交互式或非交互式方式配置全局 LLM 与后续的 channels/skills 设置。
 
-后续可以在 `docs/manuals/` 下为不同通道、不同运行模式补充更详细的 CLI 示例（如与 mock LLM server 联动的完整演示），以及为 `dashboard` 补充更丰富的前端使用说明（多面板、会话管理、通道控制等）。 
+后续可以在 `docs/manuals/` 下为不同通道、不同运行模式补充更详细的 CLI 示例（如与 mock LLM server 联动的完整演示），以及为 `dashboard` / `configuration auth` 补充更丰富的使用说明（多面板、会话管理、通道控制、权限模板等）。 
 
