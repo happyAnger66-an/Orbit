@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatch
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .base import AgentTool
 
@@ -100,6 +100,90 @@ def _profile_allow_list(profile: str) -> List[str]:
         "memory_get",
         "memory_write",
     ]
+
+
+def _load_raw_tools_config(cfg_manager) -> Dict:
+    """Low-level helper: read raw 'tools' config dict (never raises)."""
+    try:
+        raw = cfg_manager.read_config("tools", default={})
+    except Exception:
+        raw = {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _lookup_nested_policy(
+    tools_cfg: Dict,
+    *,
+    channel: Optional[str],
+    user_id: Optional[str],
+    sender_is_owner: Optional[bool],
+) -> Optional[ToolPolicyConfig]:
+    """Lookup a more specific ToolPolicyConfig based on channel/user.
+
+    Precedence:
+    1) by_channel_user["<channel>:<user_id>"]
+    2) by_user["owner:<user_id>"] / by_user["user:<user_id>"] (and owner:* / user:*)
+    3) by_channel["<channel>"]
+    Returns None when no override is found.
+    """
+    if not isinstance(tools_cfg, dict):
+        return None
+
+    by_channel_user = tools_cfg.get("by_channel_user") or {}
+    by_user = tools_cfg.get("by_user") or {}
+    by_channel = tools_cfg.get("by_channel") or {}
+
+    # 1) channel+user override
+    if channel and user_id and isinstance(by_channel_user, dict):
+        key = f"{channel}:{user_id}"
+        raw = by_channel_user.get(key)
+        if isinstance(raw, dict):
+            return _load_tool_policy_from_dict(raw)
+
+    # 2) user-level override (owner vs normal user)
+    if user_id and isinstance(by_user, dict):
+        if sender_is_owner:
+            raw = by_user.get(f"owner:{user_id}") or by_user.get("owner:*")
+        else:
+            raw = by_user.get(f"user:{user_id}") or by_user.get("user:*")
+        if isinstance(raw, dict):
+            return _load_tool_policy_from_dict(raw)
+
+    # 3) channel-level override
+    if channel and isinstance(by_channel, dict):
+        raw = by_channel.get(channel)
+        if isinstance(raw, dict):
+            return _load_tool_policy_from_dict(raw)
+
+    return None
+
+
+def resolve_effective_policy_for_context(
+    cfg_manager,
+    *,
+    base_policy: ToolPolicyConfig,
+    channel: Optional[str],
+    user_id: Optional[str],
+    sender_is_owner: Optional[bool],
+    command_authorized: Optional[bool],
+) -> ToolPolicyConfig:
+    """Resolve the effective ToolPolicyConfig for one agent run.
+
+    - Starts from base_policy (global tools.profile/allow/deny).
+    - Optionally overrides with tools.by_channel_user / by_user / by_channel.
+    - command_authorized is currently passed through for future use; it does not
+      further restrict the policy yet.
+    """
+    tools_cfg = _load_raw_tools_config(cfg_manager)
+    override = _lookup_nested_policy(
+        tools_cfg,
+        channel=channel,
+        user_id=user_id,
+        sender_is_owner=sender_is_owner,
+    )
+    if override is not None:
+        return override
+    return base_policy
 
 
 def filter_tools_by_policy(

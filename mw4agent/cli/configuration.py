@@ -13,6 +13,13 @@ import click
 
 from ..config.root import get_root_config_path, read_root_config, write_root_config
 from ..llm import list_providers
+from ..agents.tools.policy import (
+    ToolPolicyConfig,
+    resolve_tool_policy_config,
+    resolve_effective_policy_for_context,
+    filter_tools_by_policy,
+)
+from ..agents.tools import get_tool_registry
 
 # Supported channel ids for channels configuration
 SUPPORTED_CHANNELS = ["feishu", "console"]
@@ -278,6 +285,177 @@ def _run_interactive_wizard() -> None:
         click.echo("")
 
 
+def _tools_cfg_key_for_scope(
+    scope: str,
+    *,
+    channel: Optional[str],
+    user_id: Optional[str],
+    is_owner: Optional[bool],
+) -> tuple[str, Optional[str]]:
+    """Return (path_kind, key) for where to store policy under root['tools'].
+
+    path_kind is one of: 'global', 'by_channel', 'by_user', 'by_channel_user'.
+    key is the nested key (e.g. 'feishu' or 'owner:local' or 'feishu:ou_xxx').
+    """
+    s = (scope or "").strip().lower()
+    if s in ("global", "root"):
+        return "global", None
+    if s in ("channel", "by_channel"):
+        if not channel:
+            raise click.UsageError("--channel is required for scope=by_channel")
+        return "by_channel", str(channel).strip()
+    if s in ("user", "by_user"):
+        if not user_id:
+            raise click.UsageError("--user-id is required for scope=by_user")
+        prefix = "owner" if is_owner else "user"
+        return "by_user", f"{prefix}:{str(user_id).strip()}"
+    if s in ("channel-user", "channel_user", "by_channel_user"):
+        if not channel or not user_id:
+            raise click.UsageError("--channel and --user-id are required for scope=by_channel_user")
+        return "by_channel_user", f"{str(channel).strip()}:{str(user_id).strip()}"
+    raise click.UsageError(f"Unknown scope: {scope}")
+
+
+def _merge_policy_dict(
+    existing: Dict[str, Any],
+    *,
+    profile: Optional[str],
+    allow: Optional[List[str]],
+    deny: Optional[List[str]],
+    clear_allow: bool,
+    clear_deny: bool,
+) -> Dict[str, Any]:
+    out = dict(existing or {})
+    if profile is not None:
+        out["profile"] = str(profile).strip().lower()
+    if clear_allow:
+        out["allow"] = []
+    if clear_deny:
+        out["deny"] = []
+    if allow is not None:
+        cur = out.get("allow")
+        if not isinstance(cur, list):
+            cur = []
+        cur = list(cur)
+        for x in allow:
+            x = str(x).strip()
+            if x and x not in cur:
+                cur.append(x)
+        out["allow"] = cur
+    if deny is not None:
+        cur = out.get("deny")
+        if not isinstance(cur, list):
+            cur = []
+        cur = list(cur)
+        for x in deny:
+            x = str(x).strip()
+            if x and x not in cur:
+                cur.append(x)
+        out["deny"] = cur
+    return out
+
+
+def _prompt_select(title: str, choices: List[str], default: Optional[str] = None) -> str:
+    """questionary.select fallback to click.Choice."""
+    try:
+        import questionary
+
+        if default and default in choices:
+            res = questionary.select(title, choices=choices, default=default).ask()
+        else:
+            res = questionary.select(title, choices=choices).ask()
+        if res:
+            return str(res)
+    except Exception:
+        pass
+    return click.prompt(title, type=click.Choice(choices, case_sensitive=False), default=default or choices[0])
+
+
+def _prompt_text(title: str, default: str = "") -> str:
+    try:
+        import questionary
+
+        res = questionary.text(title, default=default).ask()
+        if res is not None:
+            return str(res)
+    except Exception:
+        pass
+    return click.prompt(title, default=default, show_default=bool(default))
+
+
+def _prompt_yesno(title: str, default: bool = False) -> bool:
+    try:
+        import questionary
+
+        res = questionary.confirm(title, default=default).ask()
+        if res is not None:
+            return bool(res)
+    except Exception:
+        pass
+    return bool(click.confirm(title, default=default))
+
+
+def _auth_wizard_set() -> None:
+    """Interactive wizard to set tool auth policy (scope -> channel/user -> profile/allow/deny)."""
+    click.echo("")
+    click.echo("MW4Agent tools auth wizard")
+    click.echo("")
+    scope = _prompt_select(
+        "Select scope",
+        choices=["global", "by_channel", "by_user", "by_channel_user"],
+        default="by_channel",
+    )
+    channel = None
+    user_id = None
+    is_owner = None
+    if scope == "by_channel":
+        channel = _prompt_text("Channel id (e.g. feishu/telegram/console/webhook)", default="feishu").strip()
+    elif scope == "by_user":
+        is_owner = _prompt_select("User type", choices=["owner", "user"], default="owner") == "owner"
+        user_id = _prompt_text("User id", default="local").strip()
+    elif scope == "by_channel_user":
+        channel = _prompt_text("Channel id (e.g. feishu/telegram/console/webhook)", default="feishu").strip()
+        user_id = _prompt_text("User id", default="").strip()
+
+    profile = _prompt_select("Profile", choices=["minimal", "coding", "full"], default="coding").strip().lower()
+    allow_list: List[str] = []
+    deny_list: List[str] = []
+    if _prompt_yesno("Add allow rules?", default=False):
+        while True:
+            v = _prompt_text("Allow (tool name or glob, empty to stop)", default="").strip()
+            if not v:
+                break
+            allow_list.append(v)
+    if _prompt_yesno("Add deny rules?", default=False):
+        while True:
+            v = _prompt_text("Deny (tool name or glob, empty to stop)", default="").strip()
+            if not v:
+                break
+            deny_list.append(v)
+
+    current = read_root_config()
+    tools = dict(current.get("tools") or {})
+    kind, key = _tools_cfg_key_for_scope(scope, channel=channel, user_id=user_id, is_owner=is_owner)
+    if kind == "global":
+        old = tools
+        tools = _merge_policy_dict(old, profile=profile, allow=allow_list or None, deny=deny_list or None, clear_allow=False, clear_deny=False)
+    else:
+        bucket = dict(tools.get(kind) or {})
+        old = dict(bucket.get(key) or {})
+        bucket[key] = _merge_policy_dict(old, profile=profile, allow=allow_list or None, deny=deny_list or None, clear_allow=False, clear_deny=False)
+        tools[kind] = bucket
+    current["tools"] = tools
+
+    click.echo("")
+    click.echo("Preview (tools section):")
+    click.echo(json.dumps(current.get("tools") or {}, ensure_ascii=False, indent=2))
+    if not click.confirm("Write this configuration?", default=True):
+        click.echo("Cancelled.")
+        return
+    write_root_config(current)
+    click.echo(f"Saved to {get_root_config_path()}")
+
+
 def register_configuration_cli(program: click.Group, _ctx) -> None:
     _provider_choices = _llm_provider_choices()
 
@@ -408,3 +586,105 @@ def register_configuration_cli(program: click.Group, _ctx) -> None:
                         click.echo(f"  {cid}: (configured)" if c else f"  {cid}: (not set)")
             else:
                 click.echo("Channels configuration: not set")
+
+    @configuration_group.group(name="auth", help="Configure tool permissions (tools policy) interactively or via commands.")
+    def auth_group() -> None:
+        return None
+
+    @auth_group.command(name="wizard", help="Interactive wizard for tool permissions (scope -> channel/user -> policy).")
+    def auth_wizard() -> None:
+        _auth_wizard_set()
+
+    @auth_group.command(name="show", help="Show current tools policy configuration")
+    @click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON")
+    def auth_show(as_json: bool) -> None:
+        cfg = read_root_config()
+        tools = cfg.get("tools") or {}
+        if as_json:
+            click.echo(json.dumps(tools, ensure_ascii=False, indent=2))
+        else:
+            click.echo(f"Config file: {get_root_config_path()}")
+            click.echo("Tools policy:")
+            click.echo(json.dumps(tools, ensure_ascii=False, indent=2))
+
+    @auth_group.command(name="set", help="Set tools policy for a scope (non-interactive).")
+    @click.option("--scope", type=click.Choice(["global", "by_channel", "by_user", "by_channel_user"], case_sensitive=False), required=True)
+    @click.option("--channel", required=False, help="Channel id (for by_channel / by_channel_user)")
+    @click.option("--user-id", required=False, help="User id (for by_user / by_channel_user)")
+    @click.option("--owner/--user", "is_owner", default=None, help="For by_user: owner or normal user")
+    @click.option("--profile", type=click.Choice(["minimal", "coding", "full"], case_sensitive=False), required=False)
+    @click.option("--allow", "allow_list", multiple=True, required=False, help="Allow tool name or glob (repeatable)")
+    @click.option("--deny", "deny_list", multiple=True, required=False, help="Deny tool name or glob (repeatable)")
+    @click.option("--clear-allow", is_flag=True, default=False, help="Clear allow list before adding")
+    @click.option("--clear-deny", is_flag=True, default=False, help="Clear deny list before adding")
+    def auth_set(
+        scope: str,
+        channel: Optional[str],
+        user_id: Optional[str],
+        is_owner: Optional[bool],
+        profile: Optional[str],
+        allow_list: tuple[str, ...],
+        deny_list: tuple[str, ...],
+        clear_allow: bool,
+        clear_deny: bool,
+    ) -> None:
+        current = read_root_config()
+        tools = dict(current.get("tools") or {})
+        kind, key = _tools_cfg_key_for_scope(scope, channel=channel, user_id=user_id, is_owner=is_owner)
+        if kind == "global":
+            tools = _merge_policy_dict(
+                tools,
+                profile=profile,
+                allow=list(allow_list) if allow_list else None,
+                deny=list(deny_list) if deny_list else None,
+                clear_allow=clear_allow,
+                clear_deny=clear_deny,
+            )
+        else:
+            bucket = dict(tools.get(kind) or {})
+            old = dict(bucket.get(key) or {})
+            bucket[key] = _merge_policy_dict(
+                old,
+                profile=profile,
+                allow=list(allow_list) if allow_list else None,
+                deny=list(deny_list) if deny_list else None,
+                clear_allow=clear_allow,
+                clear_deny=clear_deny,
+            )
+            tools[kind] = bucket
+        current["tools"] = tools
+        write_root_config(current)
+        click.echo(f"Tools policy updated in {get_root_config_path()}")
+
+    @auth_group.command(name="effective", help="Show effective tools policy and allowed tools for a given context.")
+    @click.option("--channel", required=True, help="Channel id (e.g. feishu)")
+    @click.option("--user-id", required=True, help="User id (e.g. open_id)")
+    @click.option("--owner/--no-owner", "is_owner", default=False, help="Whether sender is owner")
+    @click.option("--authorized/--no-authorized", "authorized", default=True, help="Whether commands are authorized")
+    @click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON")
+    def auth_effective(channel: str, user_id: str, is_owner: bool, authorized: bool, as_json: bool) -> None:
+        from ..config import get_default_config_manager
+
+        cfg_mgr = get_default_config_manager()
+        base = resolve_tool_policy_config(cfg_mgr)
+        eff = resolve_effective_policy_for_context(
+            cfg_mgr,
+            base_policy=base,
+            channel=channel,
+            user_id=user_id,
+            sender_is_owner=is_owner,
+            command_authorized=authorized,
+        )
+        all_tools = get_tool_registry().list_tools()
+        allowed = filter_tools_by_policy(all_tools, eff)
+        if not is_owner:
+            allowed = [t for t in allowed if not t.owner_only]
+        payload = {
+            "context": {"channel": channel, "user_id": user_id, "owner": is_owner, "authorized": authorized},
+            "effectivePolicy": {"profile": eff.profile, "allow": eff.allow, "deny": eff.deny},
+            "allowedTools": [t.name for t in allowed],
+        }
+        if as_json:
+            click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            click.echo(json.dumps(payload, ensure_ascii=False, indent=2))

@@ -1,0 +1,105 @@
+import types
+
+import os
+import sys
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from mw4agent.agents.tools.base import AgentTool
+from mw4agent.agents.tools.policy import (
+    ToolPolicyConfig,
+    filter_tools_by_policy,
+    resolve_effective_policy_for_context,
+)
+
+
+class DummyCfgManager:
+    def __init__(self, tools_cfg: dict) -> None:
+        self._tools_cfg = tools_cfg
+
+    def read_config(self, section: str, default=None):
+        if section == "tools":
+            return self._tools_cfg
+        return default
+
+
+class DummyTool(AgentTool):
+    async def execute(self, tool_call_id, params, context=None):
+        raise NotImplementedError()
+
+
+def _make_tools():
+    return [
+        DummyTool(name="read", description="", parameters={}, owner_only=False),
+        DummyTool(name="write", description="", parameters={}, owner_only=False),
+        DummyTool(name="memory_search", description="", parameters={}, owner_only=False),
+        DummyTool(name="gateway_ls", description="", parameters={}, owner_only=True),
+    ]
+
+
+def test_filter_tools_by_channel_and_user_owner():
+    tools_cfg = {
+        "profile": "coding",  # base
+        "by_channel": {
+            "feishu": {"profile": "coding", "deny": ["write"]},
+        },
+        "by_user": {
+            "owner:local": {"profile": "full"},
+        },
+        "by_channel_user": {
+            "feishu:ou_owner": {"profile": "full", "deny": ["gateway_ls"]},
+        },
+    }
+    cfg_mgr = DummyCfgManager(tools_cfg)
+
+    # Global base policy
+    base = ToolPolicyConfig(profile="coding")
+    tools = _make_tools()
+
+    # 1) 普通 feishu 用户：应用 by_channel.feishu，deny write
+    eff1 = resolve_effective_policy_for_context(
+        cfg_mgr,
+        base_policy=base,
+        channel="feishu",
+        user_id="ou_normal",
+        sender_is_owner=False,
+        command_authorized=True,
+    )
+    allowed1 = filter_tools_by_policy(tools, eff1)
+    names1 = sorted(t.name for t in allowed1)
+    assert "read" in names1
+    assert "memory_search" in names1
+    assert "write" not in names1
+
+    # 2) 全局 owner:local（不区分 channel），profile=full
+    eff2 = resolve_effective_policy_for_context(
+        cfg_mgr,
+        base_policy=base,
+        channel="console",
+        user_id="local",
+        sender_is_owner=True,
+        command_authorized=True,
+    )
+    allowed2 = filter_tools_by_policy(tools, eff2)
+    names2 = sorted(t.name for t in allowed2)
+    # full profile → 所有工具通过 policy 过滤（后续由 owner_only 控制暴露）
+    assert set(names2) == {"read", "write", "memory_search", "gateway_ls"}
+
+    # 3) feishu:ou_owner 走 by_channel_user 优先级
+    eff3 = resolve_effective_policy_for_context(
+        cfg_mgr,
+        base_policy=base,
+        channel="feishu",
+        user_id="ou_owner",
+        sender_is_owner=True,
+        command_authorized=True,
+    )
+    allowed3 = filter_tools_by_policy(tools, eff3)
+    names3 = sorted(t.name for t in allowed3)
+    # deny gateway_ls 只影响这一组合
+    assert "gateway_ls" not in names3
+    assert "read" in names3
+    assert "write" in names3
+

@@ -477,6 +477,105 @@ def create_app(
         if method == "health":
             return {"id": req_id, "ok": True, "payload": await health()}
 
+        if method == "tools.config":
+            # Return current tools policy config for dashboard inspection.
+            try:
+                from ..config import get_default_config_manager
+                from ..agents.tools.policy import resolve_tool_policy_config
+
+                cfg_mgr = get_default_config_manager()
+                base_policy = resolve_tool_policy_config(cfg_mgr)
+                raw_tools = cfg_mgr.read_config("tools", default={})
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": f"failed to read tools config: {e}"},
+                }
+            payload = {
+                "basePolicy": {
+                    "profile": base_policy.profile,
+                    "allow": base_policy.allow,
+                    "deny": base_policy.deny,
+                },
+                "raw": raw_tools,
+            }
+            return {"id": req_id, "ok": True, "payload": payload}
+
+        if method == "config.get":
+            # Return full root config (~/.mw4agent/mw4agent.json) for dashboard inspection.
+            try:
+                from ..config.root import get_root_config_path, read_root_config
+
+                cfg = read_root_config()
+                path = str(get_root_config_path())
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": f"failed to read root config: {e}"},
+                }
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {
+                    "path": path,
+                    "config": cfg,
+                },
+            }
+
+        if method == "config.sections.list":
+            # List top-level config sections for dashboard editing.
+            try:
+                from ..config.root import read_root_config
+
+                cfg = read_root_config()
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": f"failed to read root config: {e}"},
+                }
+            sections = sorted([k for k, v in (cfg or {}).items() if isinstance(k, str)])
+            return {"id": req_id, "ok": True, "payload": {"sections": sections}}
+
+        if method == "config.section.get":
+            section = str(params.get("section") or "").strip()
+            if not section:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "section required"}}
+            try:
+                from ..config.root import read_root_config
+
+                cfg = read_root_config()
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": f"failed to read root config: {e}"},
+                }
+            return {"id": req_id, "ok": True, "payload": {"section": section, "value": cfg.get(section)}}
+
+        if method == "config.section.set":
+            section = str(params.get("section") or "").strip()
+            value = params.get("value")
+            if not section:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "section required"}}
+            if section in ("__proto__", "prototype", "constructor"):
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "unsafe section name"}}
+            if not isinstance(value, dict):
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "value must be an object"}}
+            try:
+                from ..config.root import write_root_section
+
+                write_root_section(section, value)
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": f"failed to write section: {e}"},
+                }
+            return {"id": req_id, "ok": True, "payload": {"section": section, "ok": True}}
+
         if method == "ls":
             import os
 

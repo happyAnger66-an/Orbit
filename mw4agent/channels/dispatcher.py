@@ -151,6 +151,9 @@ class ChannelDispatcher:
             agent_id=ctx.agent_id,
             deliver=False,
             channel=ctx.channel,
+            sender_id=ctx.sender_id,
+            sender_is_owner=ctx.sender_is_owner,
+            command_authorized=ctx.command_authorized,
         )
         try:
             result = await self.runtime.agent_runner.run(params)

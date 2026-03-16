@@ -24,6 +24,7 @@ from ..types import (
 from ..session.manager import SessionManager
 from ..tools.registry import get_tool_registry
 from ..tools.base import ToolResult
+from ..tools.policy import resolve_tool_policy_config, resolve_effective_policy_for_context, filter_tools_by_policy
 from ..queue.manager import CommandQueue
 from ..events.stream import EventStream
 from ...config.paths import get_default_workspace_dir
@@ -289,16 +290,33 @@ class AgentRunner:
             from ...config import get_default_config_manager
 
             cfg_mgr = get_default_config_manager()
-            tools_policy = resolve_tool_policy_config(cfg_mgr)
+            base_policy = resolve_tool_policy_config(cfg_mgr)
+            effective_policy = resolve_effective_policy_for_context(
+                cfg_mgr,
+                base_policy=base_policy,
+                channel=params.channel,
+                user_id=params.sender_id,
+                sender_is_owner=params.sender_is_owner,
+                command_authorized=params.command_authorized,
+            )
+
             all_tools = self.tool_registry.list_tools()
-            allowed_tools = filter_tools_by_policy(all_tools, tools_policy)
-            tool_definitions = [t.to_dict() for t in allowed_tools]
+            tools_after_policy = filter_tools_by_policy(all_tools, effective_policy)
+            # Enforce owner_only at runtime: non-owner callers看不到 owner_only 工具
+            if not params.sender_is_owner:
+                tools_after_policy = [t for t in tools_after_policy if not t.owner_only]
+
+            tool_definitions = [t.to_dict() for t in tools_after_policy]
 
             tool_context = {
                 "run_id": run_id,
                 "session_key": params.session_key,
                 "agent_id": params.agent_id,
                 "workspace_dir": params.workspace_dir or get_default_workspace_dir(),
+                "channel": params.channel,
+                "sender_id": params.sender_id,
+                "sender_is_owner": params.sender_is_owner,
+                "command_authorized": params.command_authorized,
             }
             use_tool_loop = bool(tool_definitions)
             logger.info(

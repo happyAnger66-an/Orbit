@@ -725,6 +725,7 @@
             <div class="right-tabs">
               <button type="button" class="right-tab active" data-tab="gateway" data-i18n="gateway">Gateway</button>
               <button type="button" class="right-tab" data-tab="logs" data-i18n="events">Events</button>
+              <button type="button" class="right-tab" data-tab="config" data-i18n="config">Config</button>
             </div>
           </div>
           <div id="right-panel-gateway" class="right-panel-content">
@@ -758,6 +759,29 @@
             <div class="log-panel">
               <div class="log-list" id="log-list"></div>
               <div class="log-empty" id="log-empty" data-i18n="noEvents">No events yet.</div>
+            </div>
+          </div>
+          <div id="right-panel-config" class="right-panel-content hidden">
+            <div class="log-panel">
+              <div class="meta-panel">
+                <div class="meta-grid">
+                  <div class="meta-item">
+                    <div class="meta-label" data-i18n="configSubtitle">Effective tools policy and raw tools config.</div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; margin: 10px 0;">
+                <div id="config-sections" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+                <button type="button" id="config-refresh" class="lang-btn" data-i18n="refresh">Refresh</button>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center; margin-bottom: 8px;">
+                <span style="font-size:12px; color: var(--text-muted);" data-i18n="configCurrent">Current section</span>
+                <span id="config-current" class="meta-badge">–</span>
+                <span id="config-save-status" style="font-size:12px; color: var(--text-muted);"></span>
+                <button type="button" id="config-save" class="lang-btn" data-i18n="save">Save</button>
+              </div>
+              <textarea id="config-editor" style="width:100%; min-height: 340px; resize: vertical; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px;"></textarea>
+              <div class="log-empty" id="config-empty" data-i18n="noConfig">No config loaded.</div>
             </div>
           </div>
         </section>

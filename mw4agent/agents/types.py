@@ -67,7 +67,12 @@ class AgentRunParams:
     timeout_seconds: Optional[int] = None
     extra_system_prompt: Optional[str] = None
     deliver: bool = False
+    # High-level channel / source (feishu | telegram | webhook | console | internal ...)
     channel: Optional[str] = None
+    # Caller identity & gating (used for tool permissions)
+    sender_id: Optional[str] = None
+    sender_is_owner: Optional[bool] = None
+    command_authorized: Optional[bool] = None
     images: Optional[List[Dict[str, Any]]] = None
     """Workspace root for read/write tools; default cwd if not set."""
     workspace_dir: Optional[str] = None

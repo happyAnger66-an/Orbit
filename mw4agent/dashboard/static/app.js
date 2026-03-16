@@ -356,6 +356,95 @@ function init() {
 
   const rightPanelGateway = document.getElementById("right-panel-gateway");
   const rightPanelLogs = document.getElementById("right-panel-logs");
+  const rightPanelConfig = document.getElementById("right-panel-config");
+  const configEmpty = document.getElementById("config-empty");
+  const configSections = document.getElementById("config-sections");
+  const configRefreshBtn = document.getElementById("config-refresh");
+  const configSaveBtn = document.getElementById("config-save");
+  const configEditor = document.getElementById("config-editor");
+  const configCurrent = document.getElementById("config-current");
+  const configSaveStatus = document.getElementById("config-save-status");
+
+  let configLoaded = false;
+  let currentSection = "__all__";
+
+  async function rpcCall(method, params) {
+    const idem = `dashboard-${method}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const body = { id: idem, method, params: params || {} };
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return await res.json().catch(() => ({}));
+  }
+
+  function setConfigStatus(text, isError) {
+    if (!configSaveStatus) return;
+    configSaveStatus.textContent = text || "";
+    configSaveStatus.style.color = isError ? "var(--danger)" : "var(--text-muted)";
+  }
+
+  function renderSectionTabs(sections) {
+    if (!configSections) return;
+    configSections.innerHTML = "";
+    const allBtn = document.createElement("button");
+    allBtn.type = "button";
+    allBtn.className = "lang-btn";
+    allBtn.textContent = t("configAll");
+    allBtn.addEventListener("click", () => loadConfigSection("__all__"));
+    configSections.appendChild(allBtn);
+    (sections || []).forEach((sec) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lang-btn";
+      btn.textContent = String(sec);
+      btn.addEventListener("click", () => loadConfigSection(String(sec)));
+      configSections.appendChild(btn);
+    });
+  }
+
+  async function loadConfigSection(section) {
+    currentSection = section || "__all__";
+    if (configCurrent) configCurrent.textContent = currentSection;
+    setConfigStatus("");
+    try {
+      if (currentSection === "__all__") {
+        const jsonCfg = await rpcCall("config.get", {});
+        if (jsonCfg && jsonCfg.ok && jsonCfg.payload) {
+          if (configEmpty) configEmpty.classList.add("hidden");
+          if (configEditor) configEditor.value = JSON.stringify(jsonCfg.payload.config || {}, null, 2);
+        }
+        return;
+      }
+      const jsonSec = await rpcCall("config.section.get", { section: currentSection });
+      if (jsonSec && jsonSec.ok && jsonSec.payload) {
+        if (configEmpty) configEmpty.classList.add("hidden");
+        if (configEditor) configEditor.value = JSON.stringify(jsonSec.payload.value || {}, null, 2);
+      }
+    } catch (err) {
+      if (configEmpty) {
+        configEmpty.textContent = `Failed to load config: ${String(err)}`;
+        configEmpty.classList.remove("hidden");
+      }
+    }
+  }
+
+  async function loadConfigUI() {
+    if (configLoaded) return;
+    configLoaded = true;
+    try {
+      const jsonList = await rpcCall("config.sections.list", {});
+      const sections = (jsonList && jsonList.ok && jsonList.payload && jsonList.payload.sections) || [];
+      renderSectionTabs(sections);
+      await loadConfigSection("__all__");
+    } catch (err) {
+      if (configEmpty) {
+        configEmpty.textContent = `Failed to load config: ${String(err)}`;
+        configEmpty.classList.remove("hidden");
+      }
+    }
+  }
   document.querySelectorAll(".right-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       const tabName = tab.getAttribute("data-tab");
@@ -363,12 +452,60 @@ function init() {
       if (tabName === "gateway") {
         if (rightPanelGateway) rightPanelGateway.classList.remove("hidden");
         if (rightPanelLogs) rightPanelLogs.classList.add("hidden");
-      } else {
+        if (rightPanelConfig) rightPanelConfig.classList.add("hidden");
+      } else if (tabName === "logs") {
         if (rightPanelGateway) rightPanelGateway.classList.add("hidden");
         if (rightPanelLogs) rightPanelLogs.classList.remove("hidden");
+        if (rightPanelConfig) rightPanelConfig.classList.add("hidden");
+      } else if (tabName === "config") {
+        if (rightPanelGateway) rightPanelGateway.classList.add("hidden");
+        if (rightPanelLogs) rightPanelLogs.classList.add("hidden");
+        if (rightPanelConfig) rightPanelConfig.classList.remove("hidden");
+        loadConfigUI();
       }
     });
   });
+
+  if (configRefreshBtn) {
+    configRefreshBtn.addEventListener("click", async () => {
+      configLoaded = false;
+      setConfigStatus("");
+      await loadConfigUI();
+    });
+  }
+
+  if (configSaveBtn) {
+    configSaveBtn.addEventListener("click", async () => {
+      if (!configEditor) return;
+      if (!currentSection || currentSection === "__all__") {
+        setConfigStatus("Only section editing is supported.", true);
+        return;
+      }
+      let obj;
+      try {
+        obj = JSON.parse(configEditor.value || "{}");
+      } catch (e) {
+        setConfigStatus("Invalid JSON.", true);
+        return;
+      }
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+        setConfigStatus("Section value must be a JSON object.", true);
+        return;
+      }
+      setConfigStatus("Saving…", false);
+      try {
+        const res = await rpcCall("config.section.set", { section: currentSection, value: obj });
+        if (res && res.ok) {
+          setConfigStatus("Saved.", false);
+          await loadConfigSection(currentSection);
+        } else {
+          setConfigStatus((res && res.error && res.error.message) || "Save failed.", true);
+        }
+      } catch (err) {
+        setConfigStatus(`Save failed: ${String(err)}`, true);
+      }
+    });
+  }
 
   sendBtn.addEventListener("click", async () => {
     const text = inputEl.value.trim();
