@@ -41,3 +41,6 @@ htmlcov/
 
 # Root-level JSON artifacts (do not commit top-level *.json)
 /*.json
+
+# Session store backups (tests/dev runs)
+/mw4agent.sessions.json.bak*
