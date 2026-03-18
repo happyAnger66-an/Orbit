@@ -9,6 +9,7 @@ import json
 from typing import Any, Dict, Optional
 
 from ... import memory
+from ...memory.backend import get_memory_backend, SearchOptions
 from ...log import get_logger
 from .base import AgentTool, ToolResult
 
@@ -111,15 +112,21 @@ class MemorySearchTool(AgentTool):
                 files,
                 query[:80] if query else "",
             )
-            session_id = (context or {}).get("session_id")
-            agent_id = (context or {}).get("agent_id")
-            raw = memory.search(
-                query,
-                workspace_dir,
+            ctx = context or {}
+            session_id = ctx.get("session_id")
+            agent_id = ctx.get("agent_id")
+            options = SearchOptions(
                 max_results=max_results,
                 min_score=min_score,
+                session_key=ctx.get("session_key"),
                 session_id=str(session_id).strip() if isinstance(session_id, str) and session_id.strip() else None,
                 agent_id=str(agent_id).strip() if isinstance(agent_id, str) and agent_id.strip() else None,
+            )
+            backend = get_memory_backend()
+            raw = backend.search(
+                query,
+                workspace_dir,
+                options=options,
             )
             results = [
                 {
@@ -196,13 +203,17 @@ class MemoryGetTool(AgentTool):
         from_line = int(from_line) if from_line is not None else None
         lines = int(lines) if lines is not None else None
         try:
-            r = memory.read_file(
+            ctx = context or {}
+            session_id = str(ctx.get("session_id") or "").strip() or None
+            agent_id = str(ctx.get("agent_id") or "").strip() or None
+            backend = get_memory_backend()
+            r = backend.read_file(
                 workspace_dir,
                 path,
                 from_line=from_line,
                 lines=lines,
-                session_id=str((context or {}).get("session_id") or "").strip() or None,
-                agent_id=str((context or {}).get("agent_id") or "").strip() or None,
+                session_id=session_id,
+                agent_id=agent_id,
             )
             return _json_result({
                 "path": r.path,

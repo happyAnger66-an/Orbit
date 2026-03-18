@@ -47,7 +47,8 @@ def register_gateway_cli(program: click.Group, ctx: ProgramContext) -> None:
             raise click.ClickException(f"uvicorn not available: {e}")
 
         app = create_app(session_file=session_file.strip(), node_token=node_token)
-        uvicorn.run(app, host=bind, port=port, log_level="info")
+        # Reduce stdout noise (helps e2e tests that capture stdout).
+        uvicorn.run(app, host=bind, port=port, log_level="warning")
 
     @gateway.command("status", help="Show gateway service status + probe the Gateway")
     @click.option("--url", help="Gateway base URL (http://host:port)")

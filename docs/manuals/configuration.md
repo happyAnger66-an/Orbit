@@ -1,0 +1,295 @@
+# MW4Agent 配置项参考（`~/.mw4agent/mw4agent.json`）
+
+本文整理 **mw4agent 当前代码实际读取/生效的全部配置项**（截至本仓库当前版本），并补充对应的环境变量覆盖与示例。
+
+> 配置文件默认路径：`~/.mw4agent/mw4agent.json`  
+> 可通过环境变量 `MW4AGENT_CONFIG_DIR` 指定配置目录（文件名仍为 `mw4agent.json`）。
+
+---
+
+## 1. 配置文件与优先级
+
+### 1.1 根配置文件
+
+- **默认路径**：`~/.mw4agent/mw4agent.json`
+- **目录覆盖**：`MW4AGENT_CONFIG_DIR=<dir>` → 读取 `<dir>/mw4agent.json`
+- **格式**：单个 JSON 对象，按顶层 section 组织（如 `llm`、`channels`、`tools`、`plugins` 等）
+
+### 1.2 加密存储（ConfigManager）
+
+mw4agent 的配置读写走 `ConfigManager` + 加密框架：
+
+- **启用开关**：`MW4AGENT_IS_ENC=1`（默认视实现而定；未配置密钥时会降级为明文读写并打印 warning）
+- **密钥**：`MW4AGENT_SECRET_KEY`（base64 编码的 32 bytes）
+
+> 说明：测试中经常会设置 `MW4AGENT_IS_ENC=0` 或提供一个 dummy key 以避免输出噪声。
+
+---
+
+## 2. `llm`：LLM Provider/Model 配置
+
+**位置**：根配置 `llm` 段（`mw4agent/llm/backends.py`、`mw4agent/cli/configuration.py`）
+
+### 2.1 配置项
+
+- **`llm.provider`**：provider id（如 `echo/openai/deepseek/vllm/aliyun-bailian`）
+- **`llm.model_id`**：模型 id（有些地方也兼容 `llm.model` 字段）
+- **`llm.base_url`**：OpenAI-compatible base URL（可为空 → 使用 provider 默认值）
+- **`llm.api_key`**：API Key（可为空 → 走 env）
+
+### 2.2 环境变量覆盖
+
+调用时优先级（概念化）：
+
+- `MW4AGENT_LLM_PROVIDER` / `MW4AGENT_LLM_MODEL` / `MW4AGENT_LLM_BASE_URL`
+- `llm.*`（配置文件）
+- provider 默认值（若存在）
+
+API Key 通常从以下读取（不同 provider 不同 env）：
+
+- `OPENAI_API_KEY`（openai）
+- `DEEPSEEK_API_KEY`（deepseek）
+- `MW4AGENT_LLM_API_KEY`（vllm/aliyun-bailian 等通用）
+
+### 2.3 示例
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model_id": "gpt-4o-mini",
+    "base_url": "https://api.openai.com",
+    "api_key": "sk-..."
+  }
+}
+```
+
+---
+
+## 3. `channels`：通道配置
+
+**位置**：根配置 `channels` 段（`mw4agent/gateway/server.py`、`mw4agent/channels/plugins/feishu.py`）
+
+### 3.1 `channels.feishu`
+
+- **`channels.feishu.app_id`**：Feishu App ID  
+- **`channels.feishu.app_secret`**：Feishu App Secret  
+- **`channels.feishu.connection_mode`**：`webhook`（默认）或 `websocket`
+
+环境变量优先于配置文件：
+
+- `FEISHU_APP_ID`
+- `FEISHU_APP_SECRET`
+
+WebSocket 模式还会用到：
+
+- `FEISHU_ENCRYPT_KEY`（可为空）
+- `FEISHU_VERIFICATION_TOKEN`
+
+### 3.2 `channels.console`
+
+Console channel 为内置通道，通常无需配置；可留空 `{}` 或不写。
+
+### 3.3 示例
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "app_id": "cli_xxx",
+      "app_secret": "xxx",
+      "connection_mode": "webhook"
+    },
+    "console": {}
+  }
+}
+```
+
+---
+
+## 4. `tools`：工具开关、权限策略、FS 策略、Web 工具配置
+
+**位置**：根配置 `tools` 段（`mw4agent/agents/tools/policy.py`、`mw4agent/agents/tools/fs_policy.py`、`mw4agent/agents/tools/web_search_tool.py`、`mw4agent/cli/configuration.py`）
+
+### 4.1 全局 tools policy：`tools.profile / tools.allow / tools.deny`
+
+- **`tools.profile`**：`minimal` / `coding` / `full`
+  - `minimal`：无工具（LLM-only）
+  - `coding`：`read/write/memory_*` 等基础工具
+  - `full`：所有工具（`*`）
+- **`tools.allow`**：显式允许列表（工具名或 glob）
+- **`tools.deny`**：显式禁止列表（工具名或 glob），优先级最高
+
+示例：
+
+```json
+{
+  "tools": {
+    "profile": "coding",
+    "deny": ["write", "memory_write"]
+  }
+}
+```
+
+### 4.2 分层覆盖：`tools.by_channel / tools.by_user / tools.by_channel_user`
+
+用于按 channel/user 维度覆盖全局 policy。优先级（高→低）：
+
+1. `tools.by_channel_user["<channel>:<user_id>"]`
+2. `tools.by_user["owner:<user_id>"]` / `tools.by_user["user:<user_id>"]`（并支持 `owner:*` / `user:*`）
+3. `tools.by_channel["<channel>"]`
+
+示例：
+
+```json
+{
+  "tools": {
+    "by_channel": {
+      "feishu": { "profile": "coding", "deny": ["write"] }
+    },
+    "by_user": {
+      "owner:local": { "profile": "full" }
+    },
+    "by_channel_user": {
+      "feishu:ou_xxx": { "profile": "minimal" }
+    }
+  }
+}
+```
+
+### 4.3 FS 策略：`tools.fs.workspaceOnly`
+
+控制文件系统类工具是否被限制在 workspace 下：
+
+- **`tools.fs.workspaceOnly`**：`true/false`（默认 `false`）
+
+### 4.4 Web Search：`tools.web.search.*`
+
+`web_search` 工具的配置位于：
+
+- **`tools.web.search.enabled`**：是否启用并暴露给模型（当前默认 **false**，需要显式开启）
+- **`tools.web.search.provider`**：`brave` 或 `perplexity`（可选；不填则按 key 自动选择）
+- **`tools.web.search.apiKey`**：通用 key（可选；也可 provider-specific）
+- **`tools.web.search.brave.apiKey`**：Brave key（可选）
+- **`tools.web.search.perplexity.apiKey`**：Perplexity key（可选）
+- **`tools.web.search.timeoutSeconds`**：请求超时（默认 10s）
+- **`tools.web.search.cacheTtlMinutes`**：缓存 TTL（默认 5min）
+- **`tools.web.search.maxResults`**：默认结果数（默认 5，上限 10）
+
+环境变量（provider key）：
+
+- `BRAVE_API_KEY`
+- `PERPLEXITY_API_KEY`
+
+示例：
+
+```json
+{
+  "tools": {
+    "web": {
+      "search": {
+        "enabled": true,
+        "provider": "perplexity",
+        "perplexity": { "apiKey": "pplx-..." }
+      }
+    }
+  }
+}
+```
+
+---
+
+## 5. `plugins`：插件加载
+
+**位置**：根配置 `plugins` 段（`mw4agent/plugin/loader.py`）
+
+### 5.1 配置项
+
+- **`plugins.plugin_dirs`**：插件目录列表（每个目录可以是 plugin root 或包含多个 plugin root 的父目录）
+- **`plugins.plugins_enabled`**：允许加载的插件名列表（`null/缺省` 表示不限制）
+
+### 5.2 环境变量覆盖
+
+- `MW4AGENT_PLUGIN_DIR`：插件目录（支持 `:` 或 `,` 分隔），优先于 `plugins.plugin_dirs`
+- `MW4AGENT_PLUGIN_ROOT`：保留字段（当前实现中定义但不一定被使用；建议以 `MW4AGENT_PLUGIN_DIR` 为准）
+
+示例：
+
+```json
+{
+  "plugins": {
+    "plugin_dirs": ["~/mw4agent-plugins"],
+    "plugins_enabled": ["feishu-openclaw-plugin"]
+  }
+}
+```
+
+---
+
+## 6. `mw4agent.session`：Session 历史注入与 compaction（Runner 侧）
+
+**位置**：根配置顶层 `mw4agent` 段内的 `session` 子段  
+（读取点：`mw4agent/agents/runner/runner.py` 使用 `cfg_mgr.read_config("mw4agent")`）
+
+### 6.1 历史注入裁剪
+
+- **`mw4agent.session.historyLimitTurns`**（或 `history_limit_turns`）：最多保留多少个 user turn 的历史（注入到 LLM 前裁剪）
+- **环境变量覆盖**：`MW4AGENT_HISTORY_LIMIT_TURNS=<int>`
+
+### 6.2 自动 compaction
+
+`mw4agent.session.compaction`：
+
+- **`enabled`**：是否启用自动 compaction
+- **`keepTurns`**：保留最近 N 个 user turns（默认 12）
+- **`triggerTurns`**：达到多少 user turns 触发 compaction（默认 16）
+- **`summaryMaxChars`**：自动摘要最大字符数（默认 4000）
+
+示例：
+
+```json
+{
+  "mw4agent": {
+    "session": {
+      "historyLimitTurns": 12,
+      "compaction": {
+        "enabled": true,
+        "keepTurns": 12,
+        "triggerTurns": 16,
+        "summaryMaxChars": 4000
+      }
+    }
+  }
+}
+```
+
+---
+
+## 7. 运行时目录相关（环境变量，不在 `mw4agent.json`）
+
+这些属于“运行时路径布局”，不在 root config 中配置：
+
+- **`MW4AGENT_STATE_DIR`**：状态目录（默认 `~/.mw4agent`）
+- **`MW4AGENT_WORKSPACE_DIR`**：workspace 目录全局覆盖（默认 `~/.mw4agent/agents/<agentId>/workspace`，不建议轻易覆盖多 agent 情况）
+
+---
+
+## 8. Gateway/Channels 相关环境变量（不在 `mw4agent.json`）
+
+- **`MW4AGENT_GATEWAY_URL`**：channels CLI 通过 Gateway RPC 调用 agent 时使用的 base URL
+- **`GATEWAY_NODE_TOKEN`**：Gateway node 连接鉴权 token（也可通过 `mw4agent gateway run --node-token` 传入）
+
+---
+
+## 9. 日志配置（环境变量）
+
+**位置**：`mw4agent/log/__init__.py`
+
+- `MW4AGENT_LOG_LEVEL`：`DEBUG|INFO|WARNING|ERROR`（默认 INFO）
+- `MW4AGENT_LOG_CONSOLE`：`1|0|true|false`（默认 1）
+- `MW4AGENT_LOG_FILE`：日志文件路径（开启文件轮转）
+- `MW4AGENT_LOG_FILE_MAX_BYTES`：单文件最大字节（默认 10485760）
+- `MW4AGENT_LOG_FILE_BACKUP_COUNT`：备份数量（默认 5）
+- `MW4AGENT_LOG_HOST`：`host:port` TCP log host
+- `MW4AGENT_LOG_FORMAT`：自定义 format
+

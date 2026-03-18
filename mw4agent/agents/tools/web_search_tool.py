@@ -1,7 +1,8 @@
 """Web search tool (OpenClaw-inspired).
 
-Currently implemented provider:
+Currently implemented providers:
 - Brave Search API (https://api.search.brave.com/res/v1/web/search)
+- Perplexity Search API (https://api.perplexity.ai/search)
 
 Design notes:
 - Requires API key (config or env).
@@ -24,6 +25,7 @@ from .base import AgentTool, ToolResult
 
 
 BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+PERPLEXITY_SEARCH_ENDPOINT = "https://api.perplexity.ai/search"
 DEFAULT_COUNT = 5
 MAX_COUNT = 10
 DEFAULT_TIMEOUT_S = 10
@@ -75,6 +77,25 @@ def _read_str(params: Dict[str, Any], key: str) -> Optional[str]:
     return s or None
 
 
+def _read_str_list(params: Dict[str, Any], key: str) -> Optional[list[str]]:
+    v = params.get(key)
+    if v is None:
+        return None
+    if isinstance(v, list):
+        out: list[str] = []
+        for x in v:
+            s = str(x).strip()
+            if s:
+                out.append(s)
+        return out or None
+    # allow comma-separated strings
+    if isinstance(v, str):
+        parts = [p.strip() for p in v.split(",")]
+        out = [p for p in parts if p]
+        return out or None
+    return None
+
+
 @dataclass
 class _CacheEntry:
     expires_at_ms: int
@@ -84,15 +105,13 @@ class _CacheEntry:
 _CACHE: Dict[str, _CacheEntry] = {}
 
 
-def _cache_key(*, query: str, count: int, country: str, search_lang: str, ui_lang: str, freshness: str) -> str:
+def _cache_key(*, provider: str, query: str, count: int, params: Dict[str, Any]) -> str:
     return json.dumps(
         {
+            "provider": provider,
             "q": query,
             "count": count,
-            "country": country,
-            "search_lang": search_lang,
-            "ui_lang": ui_lang,
-            "freshness": freshness,
+            "params": params,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -111,19 +130,54 @@ def _read_tool_web_search_config() -> Dict[str, Any]:
     return search if isinstance(search, dict) else {}
 
 
+def is_web_search_enabled() -> bool:
+    """Whether web_search tool should be exposed to the LLM."""
+    cfg = _read_tool_web_search_config()
+    return _resolve_enabled(cfg)
+
+
 def _resolve_enabled(cfg: Dict[str, Any]) -> bool:
     enabled = cfg.get("enabled")
     if isinstance(enabled, bool):
         return enabled
-    return True
+    # Safer default: do not allow external network calls unless explicitly enabled.
+    return False
 
 
-def _resolve_api_key(cfg: Dict[str, Any]) -> Optional[str]:
+def _resolve_provider(cfg: Dict[str, Any]) -> Optional[str]:
+    v = cfg.get("provider")
+    if isinstance(v, str) and v.strip():
+        return v.strip().lower()
+    return None
+
+
+def _resolve_provider_api_key(cfg: Dict[str, Any], provider: str) -> Optional[str]:
+    # Provider-specific config takes precedence, then generic apiKey, then env.
+    p = provider.strip().lower()
+    if p:
+        sub = cfg.get(p)
+        if isinstance(sub, dict):
+            raw = sub.get("apiKey") or sub.get("api_key")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
     raw = cfg.get("apiKey") or cfg.get("api_key")
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
-    env = os.getenv("BRAVE_API_KEY", "").strip()
-    return env or None
+    if p == "brave":
+        env = os.getenv("BRAVE_API_KEY", "").strip()
+        return env or None
+    if p == "perplexity":
+        env = os.getenv("PERPLEXITY_API_KEY", "").strip()
+        return env or None
+    return None
+
+
+def _auto_select_provider(cfg: Dict[str, Any]) -> Optional[str]:
+    # Keep this simple and deterministic for now.
+    for p in ("perplexity", "brave"):
+        if _resolve_provider_api_key(cfg, p):
+            return p
+    return None
 
 
 def _resolve_timeout_s(cfg: Dict[str, Any]) -> int:
@@ -197,13 +251,104 @@ def _brave_search(
     }
 
 
+def _perplexity_search(
+    *,
+    api_key: str,
+    query: str,
+    count: int,
+    country: Optional[str],
+    language: Optional[str],
+    freshness: Optional[str],
+    date_after: Optional[str],
+    date_before: Optional[str],
+    timeout_s: int,
+) -> Dict[str, Any]:
+    # Perplexity Search API is "answer + citations" shaped; keep output compatible.
+    # Best-effort filters: Perplexity supports "recency" and date range in some modes;
+    # we pass through as metadata if unsupported by the backend.
+    req_body: Dict[str, Any] = {"query": query}
+    if count:
+        req_body["max_results"] = int(count)
+    if country:
+        req_body["country"] = country
+    if language:
+        req_body["language"] = language
+    if freshness:
+        # openclaw maps day/week/month/year; keep same input.
+        req_body["freshness"] = freshness
+    if date_after:
+        req_body["date_after"] = date_after
+    if date_before:
+        req_body["date_before"] = date_before
+
+    data_bytes = json.dumps(req_body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url=PERPLEXITY_SEARCH_ENDPOINT,
+        method="POST",
+        data=data_bytes,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=float(timeout_s)) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+    data = json.loads(raw) if raw else {}
+
+    # Try to normalize a few plausible response shapes.
+    content = ""
+    citations: list[str] = []
+    results: list[Dict[str, Any]] = []
+
+    if isinstance(data, dict):
+        # Common fields (varies by API version / wrappers).
+        for k in ("content", "answer", "text", "response"):
+            v = data.get(k)
+            if isinstance(v, str) and v.strip():
+                content = v.strip()
+                break
+        cits = data.get("citations") or data.get("sources") or data.get("urls")
+        if isinstance(cits, list):
+            citations = [str(x).strip() for x in cits if str(x).strip()]
+        # Some APIs return results list.
+        items = data.get("results") or data.get("web_results") or data.get("webResults")
+        if isinstance(items, list):
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                title = str(it.get("title") or "")
+                url0 = str(it.get("url") or it.get("link") or "")
+                snippet = str(it.get("snippet") or it.get("description") or it.get("content") or "")
+                if not url0 and not title and not snippet:
+                    continue
+                results.append(
+                    {
+                        "title": _wrap_untrusted(title) if title else "",
+                        "url": url0,
+                        "description": _wrap_untrusted(snippet) if snippet else "",
+                        "published": None,
+                    }
+                )
+
+    return {
+        "query": query,
+        "provider": "perplexity",
+        "count": len(results) if results else len(citations) if citations else 0,
+        "content": _wrap_untrusted(content) if content else "",
+        "citations": citations,
+        "results": results,
+        "externalContent": {"untrusted": True, "source": "web_search", "provider": "perplexity", "wrapped": True},
+    }
+
+
 class WebSearchTool(AgentTool):
     def __init__(self) -> None:
         super().__init__(
             name="web_search",
             description=(
-                "Search the web (Brave Search API). Returns titles, URLs, and snippets. "
-                "Requires BRAVE_API_KEY or tools.web.search.apiKey."
+                "Search the web. Supports multiple providers (brave, perplexity). "
+                "Requires provider API key via env or tools.web.search config."
             ),
             parameters={
                 "type": "object",
@@ -211,9 +356,13 @@ class WebSearchTool(AgentTool):
                     "query": {"type": "string", "description": "Search query string."},
                     "count": {"type": "integer", "description": "Number of results (1-10)."},
                     "country": {"type": "string", "description": "2-letter country code, e.g. US/DE/ALL."},
-                    "search_lang": {"type": "string", "description": "2-letter search language code, e.g. en/de."},
-                    "ui_lang": {"type": "string", "description": "Locale for UI language, e.g. en-US."},
-                    "freshness": {"type": "string", "description": "Brave freshness filter: pd/pw/pm/py or YYYY-MM-DDtoYYYY-MM-DD."},
+                    "language": {"type": "string", "description": "ISO 639-1 language code, e.g. en/zh."},
+                    "freshness": {"type": "string", "description": "Time filter: day/week/month/year (provider-dependent)."},
+                    "date_after": {"type": "string", "description": "Only results after date (YYYY-MM-DD)."},
+                    "date_before": {"type": "string", "description": "Only results before date (YYYY-MM-DD)."},
+                    # Brave-specific (kept for compatibility with existing callers).
+                    "search_lang": {"type": "string", "description": "Brave: search language code, e.g. en, zh-hans."},
+                    "ui_lang": {"type": "string", "description": "Brave: UI language locale, e.g. en-US."},
                 },
                 "required": ["query"],
             },
@@ -230,13 +379,24 @@ class WebSearchTool(AgentTool):
         if not _resolve_enabled(cfg):
             return ToolResult(success=False, result={"error": "disabled"}, error="web_search is disabled")
 
-        api_key = _resolve_api_key(cfg)
-        if not api_key:
+        provider = _resolve_provider(cfg) or _auto_select_provider(cfg)
+        if provider not in ("brave", "perplexity"):
             return ToolResult(
                 success=True,
                 result={
-                    "error": "missing_brave_api_key",
-                    "message": "web_search needs a Brave Search API key (BRAVE_API_KEY or tools.web.search.apiKey).",
+                    "error": "missing_web_search_provider",
+                    "message": "web_search needs tools.web.search.provider or a supported API key (BRAVE_API_KEY / PERPLEXITY_API_KEY).",
+                    "supportedProviders": ["brave", "perplexity"],
+                },
+            )
+        api_key = _resolve_provider_api_key(cfg, provider)
+        if not api_key:
+            env_hint = "BRAVE_API_KEY" if provider == "brave" else "PERPLEXITY_API_KEY"
+            return ToolResult(
+                success=True,
+                result={
+                    "error": f"missing_{provider}_api_key",
+                    "message": f"web_search({provider}) needs an API key ({env_hint} or tools.web.search.{provider}.apiKey / tools.web.search.apiKey).",
                 },
             )
 
@@ -251,19 +411,29 @@ class WebSearchTool(AgentTool):
             count = MAX_COUNT
 
         country = _read_str(params, "country")
+        language = _read_str(params, "language")
+        freshness = _read_str(params, "freshness")
+        date_after = _read_str(params, "date_after")
+        date_before = _read_str(params, "date_before")
+        # Brave-specific
         search_lang = _read_str(params, "search_lang")
         ui_lang = _read_str(params, "ui_lang")
-        freshness = _read_str(params, "freshness")
 
         timeout_s = _resolve_timeout_s(cfg)
         ttl_s = _resolve_cache_ttl_s(cfg)
         key = _cache_key(
+            provider=provider,
             query=query,
             count=count,
-            country=country or "",
-            search_lang=search_lang or "",
-            ui_lang=ui_lang or "",
-            freshness=freshness or "",
+            params={
+                "country": country or "",
+                "language": language or "",
+                "freshness": freshness or "",
+                "date_after": date_after or "",
+                "date_before": date_before or "",
+                "search_lang": search_lang or "",
+                "ui_lang": ui_lang or "",
+            },
         )
         now = _now_ms()
         hit = _CACHE.get(key)
@@ -273,16 +443,29 @@ class WebSearchTool(AgentTool):
             return ToolResult(success=True, result=cached)
 
         try:
-            payload = _brave_search(
-                api_key=api_key,
-                query=query,
-                count=count,
-                country=country,
-                search_lang=search_lang,
-                ui_lang=ui_lang,
-                freshness=freshness,
-                timeout_s=timeout_s,
-            )
+            if provider == "perplexity":
+                payload = _perplexity_search(
+                    api_key=api_key,
+                    query=query,
+                    count=count,
+                    country=country,
+                    language=language,
+                    freshness=freshness,
+                    date_after=date_after,
+                    date_before=date_before,
+                    timeout_s=timeout_s,
+                )
+            else:
+                payload = _brave_search(
+                    api_key=api_key,
+                    query=query,
+                    count=count,
+                    country=country,
+                    search_lang=search_lang,
+                    ui_lang=ui_lang,
+                    freshness=freshness,
+                    timeout_s=timeout_s,
+                )
             payload["tookMs"] = 0  # best-effort; keep shape similar
             payload["cache"] = {"hit": False, "ttlSeconds": ttl_s}
             _CACHE[key] = _CacheEntry(expires_at_ms=now + ttl_s * 1000, payload=payload)

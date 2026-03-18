@@ -11,12 +11,12 @@ async def test_web_search_missing_api_key(monkeypatch):
     from mw4agent.agents.tools.web_search_tool import WebSearchTool
 
     monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
 
     tool = WebSearchTool()
     res = await tool.execute("tc1", {"query": "hello"})
-    assert res.success is True
-    assert isinstance(res.result, dict)
-    assert res.result.get("error") == "missing_brave_api_key"
+    assert res.success is False
+    assert res.result.get("error") == "disabled"
 
 
 @pytest.mark.asyncio
@@ -24,6 +24,10 @@ async def test_web_search_brave_parsing_and_wrapping(monkeypatch):
     from mw4agent.agents.tools.web_search_tool import WebSearchTool
 
     monkeypatch.setenv("BRAVE_API_KEY", "k_test")
+    monkeypatch.setattr(
+        "mw4agent.agents.tools.web_search_tool.read_root_section",
+        lambda section, default=None: {"web": {"search": {"enabled": True}}} if section == "tools" else default,
+    )
 
     payload = {
         "web": {
@@ -70,6 +74,10 @@ async def test_web_search_cache_hit(monkeypatch):
     from mw4agent.agents.tools.web_search_tool import WebSearchTool
 
     monkeypatch.setenv("BRAVE_API_KEY", "k_test")
+    monkeypatch.setattr(
+        "mw4agent.agents.tools.web_search_tool.read_root_section",
+        lambda section, default=None: {"web": {"search": {"enabled": True}}} if section == "tools" else default,
+    )
 
     payload = {"web": {"results": [{"title": "t1", "url": "https://example.com/1", "description": "d1"}]}}
 
@@ -97,4 +105,67 @@ async def test_web_search_cache_hit(monkeypatch):
     assert res1.success is True and res2.success is True
     assert calls.n == 1
     assert res2.result["cache"]["hit"] is True
+
+
+@pytest.mark.asyncio
+async def test_web_search_perplexity_missing_key(monkeypatch):
+    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+
+    # Force provider selection to perplexity (via config).
+    def _cfg(section, default=None):
+        if section == "tools":
+            return {"web": {"search": {"enabled": True, "provider": "perplexity"}}}
+        return default
+
+    monkeypatch.setattr("mw4agent.agents.tools.web_search_tool.read_root_section", _cfg)
+    monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
+
+    tool = WebSearchTool()
+    res = await tool.execute("tc_p0", {"query": "q"})
+    assert res.success is True
+    assert res.result.get("error") == "missing_perplexity_api_key"
+
+
+@pytest.mark.asyncio
+async def test_web_search_perplexity_parsing(monkeypatch):
+    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+
+    def _cfg(section, default=None):
+        if section == "tools":
+            return {
+                "web": {"search": {"enabled": True, "provider": "perplexity", "perplexity": {"apiKey": "pplx_test"}}}
+            }
+        return default
+
+    monkeypatch.setattr("mw4agent.agents.tools.web_search_tool.read_root_section", _cfg)
+
+    payload = {
+        "content": "answer text",
+        "citations": ["https://c1.example", "https://c2.example"],
+        "results": [{"title": "t1", "url": "https://r1.example", "snippet": "s1"}],
+    }
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(req, timeout=0):
+        return _Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    tool = WebSearchTool()
+    res = await tool.execute("tc_p1", {"query": "q", "count": 3, "language": "en"})
+    assert res.success is True
+    data = res.result
+    assert data["provider"] == "perplexity"
+    assert "EXTERNAL_UNTRUSTED_CONTENT" in (data.get("content") or "")
+    assert data.get("citations") == ["https://c1.example", "https://c2.example"]
+    assert data.get("results") and data["results"][0]["url"] == "https://r1.example"
 

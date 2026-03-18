@@ -50,6 +50,7 @@ from ..session.transcript import (
     resolve_history_limit_turns,
     split_by_user_turns,
 )
+from ..tools.web_search_tool import is_web_search_enabled
 
 MAX_TOOL_ROUNDS = 16
 
@@ -476,6 +477,9 @@ class AgentRunner:
             # Enforce owner_only at runtime: non-owner callers看不到 owner_only 工具
             if not params.sender_is_owner:
                 tools_after_policy = [t for t in tools_after_policy if not t.owner_only]
+            # Do not expose web_search unless explicitly enabled (avoids unexpected external calls).
+            if not is_web_search_enabled():
+                tools_after_policy = [t for t in tools_after_policy if t.name != "web_search"]
 
             tool_definitions = [t.to_dict() for t in tools_after_policy]
 
