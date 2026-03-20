@@ -221,3 +221,10 @@ def filter_tools_by_policy(
             out.append(tool)
     return out
 
+
+def resolve_effective_allow_patterns(policy: ToolPolicyConfig) -> List[str]:
+    """Return the expanded allow patterns after applying profile + explicit allow."""
+    base_allow = _profile_allow_list(policy.profile)
+    extra_allow = policy.allow or []
+    return list(dict.fromkeys(base_allow + extra_allow))
+

@@ -24,7 +24,7 @@ from ..types import (
 from ..session.manager import SessionManager
 from ..tools.registry import get_tool_registry
 from ..tools.base import ToolResult
-from ..tools.policy import resolve_tool_policy_config, resolve_effective_policy_for_context, filter_tools_by_policy
+from ..tools.policy import resolve_tool_policy_config, resolve_effective_policy_for_context, filter_tools_by_policy, resolve_effective_allow_patterns
 from ..tools.fs_policy import resolve_tool_fs_policy_config
 from ..queue.manager import CommandQueue
 from ..events.stream import EventStream
@@ -53,6 +53,26 @@ from ..session.transcript import (
 from ..tools.web_search_tool import is_web_search_enabled
 
 MAX_TOOL_ROUNDS = 16
+
+_TOOL_NAME_ALIASES = {
+    "bash": "exec",
+    "shell_exec": "exec",
+    "run_command": "exec",
+    "apply-patch": "apply_patch",
+}
+
+
+def _normalize_tool_name(raw_name: str) -> str:
+    """Normalize provider/legacy tool names to canonical registry names."""
+    name = (raw_name or "").strip()
+    if not name:
+        return ""
+    normalized_delimiter = name.replace("/", ".")
+    parts = [p.strip() for p in normalized_delimiter.split(".") if p.strip()]
+    if len(parts) >= 2 and parts[0].lower() in {"functions", "tools"}:
+        normalized_delimiter = ".".join(parts[1:])
+    normalized = normalized_delimiter.strip().lower()
+    return _TOOL_NAME_ALIASES.get(normalized, normalized)
 
 
 def _count_user_turns(messages: List[Dict[str, Any]]) -> int:
@@ -297,7 +317,9 @@ class AgentRunner:
 
         # --- Attach skills snapshot to session & build prompt --------------
         # logger.info(f"Building skills snapshot for session {session_entry.session_id}")
-        skills_snapshot = build_skill_snapshot()
+        skills_snapshot = build_skill_snapshot(
+            workspace_dir=params.workspace_dir or get_default_workspace_dir()
+        )
         skills_prompt = ''
         if skills_snapshot.get("prompt"):
             skills_prompt = str(skills_snapshot["prompt"])
@@ -342,9 +364,10 @@ class AgentRunner:
         except Exception:
             tool_plan = None
 
-#        logger.info(f"agent_turn {tool_plan}")
+        logger.info(f"--> agent_turn start ")
         if tool_plan is not None:
-            tool_name = str(tool_plan["tool_name"])
+            tool_name = _normalize_tool_name(str(tool_plan["tool_name"]))
+            logger.info(f"  ----> agent_turn tool_name: {tool_name}")
             tool_args = tool_plan.get("tool_args") or {}
             if not isinstance(tool_args, dict):
                 tool_args = {}
@@ -376,7 +399,7 @@ class AgentRunner:
                 "agent_id": params.agent_id,
                 "workspace_dir": params.workspace_dir or get_default_workspace_dir(),
                 "tools_profile": effective_policy.profile,
-                "tools_allow": effective_policy.allow,
+                "tools_allow": resolve_effective_allow_patterns(effective_policy),
                 "tools_deny": effective_policy.deny,
                 "tools_fs_workspace_only": fs_policy.workspace_only,
             }
@@ -386,6 +409,7 @@ class AgentRunner:
                 params=tool_args,
                 context=tool_context,
             )
+            logger.info(f"agent_turn tool_result: {tool_result}")
 
             if getattr(tool_result, "success", False):
                 tool_text = f"Tool {tool_name} succeeded with result:\n{tool_result.result!r}"
@@ -415,7 +439,7 @@ class AgentRunner:
         else:
             # No tool plan → try tool-call loop if we have tools and non-echo provider.
             from ...config import get_default_config_manager
-
+            logger.info(f"  --> agent_turn no tool plan ")
             cfg_mgr = get_default_config_manager()
             # --- Session short-term memory (transcript history) ----------------
             # Resolve transcript path from session store to keep store+transcripts colocated.
@@ -494,14 +518,14 @@ class AgentRunner:
                 "sender_is_owner": params.sender_is_owner,
                 "command_authorized": params.command_authorized,
                 "tools_profile": effective_policy.profile,
-                "tools_allow": effective_policy.allow,
+                "tools_allow": resolve_effective_allow_patterns(effective_policy),
                 "tools_deny": effective_policy.deny,
                 "tools_fs_workspace_only": fs_policy.workspace_only,
             }
             use_tool_loop = bool(tool_definitions)
-#            logger.info(
-#                f"agent_turn use_tool_loop: {use_tool_loop}, tool_definitions: {tool_definitions}")
             if use_tool_loop:
+                logger.info(
+                    f"  --> llm return use_tool_loop: {use_tool_loop}, tool_context: {tool_context}")
                 reply_text, provider, model, usage = await self._run_tool_loop(
                     params_for_llm,
                     tool_definitions,
@@ -513,6 +537,7 @@ class AgentRunner:
                     transcript_cwd=tool_context.get("workspace_dir") or "",
                 )
             else:
+                logger.info(f"  --> llm return no tool plan ")
                 await asyncio.sleep(0)
                 messages: List[Dict[str, Any]] = []
                 if params_for_llm.extra_system_prompt:
@@ -620,6 +645,7 @@ class AgentRunner:
     ) -> tuple:
         # Returns (reply_text: str, provider: str, model: str, usage: LLMUsage)
         """Run LLM with tools in a loop until no tool_calls or max rounds. Returns (reply_text, provider, model, usage)."""
+        logger.info(f"    ----> run_tool_loop tool_loop start: {tool_context}")
         messages: List[Dict[str, Any]] = []
         if params.extra_system_prompt:
             messages.append({
@@ -647,6 +673,7 @@ class AgentRunner:
             content, tool_calls, provider, model, usage = generate_reply_with_tools(
                 params, messages, tool_definitions
             )
+            logger.info(f"      ----> run_tool_loop {_} tool_calls: {tool_calls} content: {content}")
             if not tool_calls:
                 reply_text = content or ""
                 if transcript_file and transcript_session_id:
@@ -657,10 +684,18 @@ class AgentRunner:
                         messages=[{"role": "assistant", "content": reply_text}],
                     )
                 break
+            normalized_tool_calls = [
+                {
+                    "id": tc["id"],
+                    "name": _normalize_tool_name(str(tc["name"])),
+                    "arguments": tc["arguments"],
+                }
+                for tc in tool_calls
+            ]
             logger.info(
                 "executing %d tool call(s): %s",
-                len(tool_calls),
-                [(tc.get("name"), tc.get("arguments")) for tc in tool_calls],
+                len(normalized_tool_calls),
+                [(tc.get("name"), tc.get("arguments")) for tc in normalized_tool_calls],
             )
             # Emit tool start/end for each call and collect results.
             assistant_msg = {
@@ -675,7 +710,7 @@ class AgentRunner:
                             "arguments": json.dumps(tc["arguments"], ensure_ascii=False),
                         },
                     }
-                    for tc in tool_calls
+                    for tc in normalized_tool_calls
                 ],
             }
             messages.append(assistant_msg)
@@ -686,7 +721,7 @@ class AgentRunner:
                     cwd=transcript_cwd,
                     messages=[assistant_msg],
                 )
-            for tc in tool_calls:
+            for tc in normalized_tool_calls:
                 tid, name, args = tc["id"], tc["name"], tc["arguments"]
                 try:
                     result = await self.execute_tool(
@@ -735,7 +770,8 @@ class AgentRunner:
 
         Similar to tool execution in OpenClaw's pi-embedded-runner.
         """
-        tool = self.tool_registry.get_tool(tool_name)
+        normalized_tool_name = _normalize_tool_name(tool_name)
+        tool = self.tool_registry.get_tool(normalized_tool_name)
         if not tool:
             raise ValueError(f"Tool '{tool_name}' not found")
 
@@ -746,7 +782,7 @@ class AgentRunner:
                 type="start",
                 data={
                     "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
+                    "tool_name": normalized_tool_name,
                     "params": params,
                 },
             )
@@ -763,7 +799,7 @@ class AgentRunner:
                     type="end",
                     data={
                         "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
+                        "tool_name": normalized_tool_name,
                         "success": result.success,
                         "result": result.result,
                     },
@@ -780,7 +816,7 @@ class AgentRunner:
                     type="error",
                     data={
                         "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
+                        "tool_name": normalized_tool_name,
                         "error": str(e),
                     },
                 )

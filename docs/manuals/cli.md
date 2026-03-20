@@ -7,6 +7,7 @@
 - `channels`：运行各类通道（console / telegram / webhook / feishu）
 - `config`：读写加密配置文件
 - `configuration`：交互式 / 非交互式配置 LLM、channels、skills 等
+- `tools`：查看当前所有工具及其启用状态限制
 
 所有示例均假设你在仓库根目录运行：
 
@@ -32,6 +33,7 @@ python -m mw4agent --help
 - `channels`：运行 console / telegram / webhook / feishu 通道
 - `config`：读写加密配置文件（`ConfigManager` 封装）
 - `configuration`：配置 LLM provider/model 等（支持交互式向导）
+- `tools`：查看工具列表、启用状态和限制原因
 
 ### 1.1 插件
 
@@ -512,12 +514,52 @@ mw4agent dashboard --no-open
 
 ---
 
-## 9. 小结
+## 9. `tools` 命令组（工具可见性与限制）
+
+`tools` 命令用于检查**当前注册的所有工具**，以及在指定上下文下（channel/user/owner）是否启用。
+
+### 9.1 列出工具（文本）
+
+```bash
+mw4agent tools list \
+  --channel console \
+  --user-id local \
+  --no-owner
+```
+
+输出会包含：
+
+- 工具名（如 `read`、`write`、`exec`、`process`）
+- 当前是否可用（`ENABLED` / `DISABLED`）
+- 是否 `owner_only`
+- 限制原因（例如 `blocked by tools policy`、`owner_only`）
+
+### 9.2 列出工具（JSON，推荐用于自动化）
+
+```bash
+mw4agent tools list \
+  --channel feishu \
+  --user-id ou_xxx \
+  --owner \
+  --authorized \
+  --json
+```
+
+返回结构包含：
+
+- `context`：本次计算使用的上下文
+- `effectivePolicy`：生效后的 tools 策略（`profile/allow/deny`）
+- `tools[]`：每个工具的启用状态与限制原因
+
+---
+
+## 10. 小结
 
 - 使用 `gateway run` + `channels console run` 可以在本机快速搭建一个“Gateway + Console Chat”的测试环境；
 - 使用 `agent run` 可以脚本化触发单次 Agent 回合（支持在调用前执行工具）；
 - 使用 `config read/write` 可以安全地管理加密配置（LLM provider、通道配置等），避免手工处理加密细节；
-- 使用 `configuration` 可以以交互式或非交互式方式配置全局 LLM 与后续的 channels/skills 设置。
+- 使用 `configuration` 可以以交互式或非交互式方式配置全局 LLM 与后续的 channels/skills 设置；
+- 使用 `tools list` 可以快速确认“当前有哪些工具可用、哪些被策略或 owner_only 限制”。
 
 后续可以在 `docs/manuals/` 下为不同通道、不同运行模式补充更详细的 CLI 示例（如与 mock LLM server 联动的完整演示），以及为 `dashboard` / `configuration auth` 补充更丰富的使用说明（多面板、会话管理、通道控制、权限模板等）。 
 

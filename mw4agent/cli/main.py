@@ -10,9 +10,11 @@ from .node_host import register_node_host_cli
 from .channels.register import register_channels_cli
 from .agent.register import register_agent_cli
 from .configuration import register_configuration_cli
+from .skills.register import register_skills_cli
 from .dashboard import register_dashboard_cli
 from .memory import register_memory_cli
 from .sessions import register_sessions_cli
+from .tools.register import register_tools_cli
 from .. import __version__
 from ..log import setup_logging
 
@@ -158,6 +160,30 @@ def register_core_commands(program: click.Group, ctx: ProgramContext) -> None:
         register=register_sessions_cli,
     )
     get_registry().register_entry(sessions_entry)
+
+    skills_entry = CommandEntry(
+        commands=[
+            {
+                "name": "skills",
+                "description": "Inspect loaded skills and snapshot status",
+                "has_subcommands": True,
+            }
+        ],
+        register=register_skills_cli,
+    )
+    get_registry().register_entry(skills_entry)
+
+    tools_entry = CommandEntry(
+        commands=[
+            {
+                "name": "tools",
+                "description": "Inspect available tools and enablement status",
+                "has_subcommands": True,
+            }
+        ],
+        register=register_tools_cli,
+    )
+    get_registry().register_entry(tools_entry)
 
 
 def register_commands(

@@ -12,6 +12,7 @@ from mw4agent.agents.tools.policy import (
     ToolPolicyConfig,
     filter_tools_by_policy,
     resolve_effective_policy_for_context,
+    resolve_effective_allow_patterns,
 )
 
 
@@ -102,4 +103,9 @@ def test_filter_tools_by_channel_and_user_owner():
     assert "gateway_ls" not in names3
     assert "read" in names3
     assert "write" in names3
+
+
+def test_resolve_effective_allow_patterns_full_profile():
+    p = ToolPolicyConfig(profile="full", allow=None, deny=None)
+    assert resolve_effective_allow_patterns(p) == ["*"]
 

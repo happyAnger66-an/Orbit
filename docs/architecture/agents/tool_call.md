@@ -31,6 +31,7 @@
   - 固定为 `"tool_call"`，表示本轮先执行一次工具，再调用 LLM。
 - **tool_name**：
   - 要调用的工具名称，必须已在 `ToolRegistry` 中注册，例如 `gateway_ls`。
+  - 建议使用 **canonical** 名称（如 `exec`、`process`、`read`、`write`）。
 - **tool_args**：
   - 传递给工具的参数对象，对应 `AgentTool.execute(tool_call_id, params, context)` 中的 `params`。
   - 必须是 `object`/`dict`，否则会被安全地降级为 `{}`。
@@ -41,6 +42,36 @@
   - 自定义的 tool call ID；如果未提供，`AgentRunner` 会自动生成 UUID。
 
 > 其他任意字段会被忽略，不影响协议执行。
+
+### 2.1 Tool Name 规范化（对齐 OpenClaw）
+
+为提升兼容性，`AgentRunner` 在执行前会对 `tool_name` 做规范化：
+
+- 前后空白会被去掉，名称统一为小写；
+- provider 前缀会被折叠（如 `functions.exec`、`tools/exec` -> `exec`）；
+- 兼容别名会映射到 canonical 名称：
+  - `bash` -> `exec`
+  - `shell_exec` -> `exec`
+  - `run_command` -> `exec`
+  - `apply-patch` -> `apply_patch`
+
+因此，系统命令场景请统一使用：
+
+- **`exec`**：执行一次命令
+- **`process`**：后续会话管理（list/status/stop 等）
+
+示例（旧名仍可兼容，但建议迁移到 canonical）：
+
+```json
+{
+  "type": "tool_call",
+  "tool_name": "shell_exec",
+  "tool_args": {"command": "echo hello"},
+  "final_user_message": "总结命令执行结果。"
+}
+```
+
+上述请求会在运行时被规范化为调用 `exec`。
 
 ## 3. 运行时行为（_execute_agent_turn 概要）
 

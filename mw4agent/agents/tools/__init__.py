@@ -7,11 +7,22 @@ from .read_tool import ReadTool
 from .write_tool import WriteTool
 from .memory_tool import MemorySearchTool, MemoryGetTool, MemoryWriteTool
 from .web_search_tool import WebSearchTool
+from .exec_tool import ExecTool
+from .process_tool import ProcessTool
 
 
 def _register_builtin_tools() -> None:
     reg = get_tool_registry()
-    for tool in (ReadTool(), WriteTool(), MemorySearchTool(), MemoryGetTool(), MemoryWriteTool(), WebSearchTool()):
+    for tool in (
+        ReadTool(),
+        WriteTool(),
+        MemorySearchTool(),
+        MemoryGetTool(),
+        MemoryWriteTool(),
+        WebSearchTool(),
+        ExecTool(),
+        ProcessTool(),
+    ):
         if reg.get_tool(tool.name) is None:
             reg.register(tool)
 
@@ -30,4 +41,6 @@ __all__ = [
     "MemoryGetTool",
     "MemoryWriteTool",
     "WebSearchTool",
+    "ExecTool",
+    "ProcessTool",
 ]
