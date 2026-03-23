@@ -48,6 +48,15 @@ class EventStream:
             self._subscribers[stream] = []
         self._subscribers[stream].append(handler)
 
+    def unsubscribe(self, stream: str, handler: Callable[[StreamEvent], None]) -> None:
+        """Remove a previously registered stream handler (same callable object)."""
+        if stream not in self._subscribers:
+            return
+        try:
+            self._subscribers[stream].remove(handler)
+        except ValueError:
+            pass
+
     def add_handler(self, handler: StreamHandler) -> None:
         """Add a stream handler"""
         self._handlers.append(handler)

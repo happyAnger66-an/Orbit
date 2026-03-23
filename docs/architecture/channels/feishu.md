@@ -26,6 +26,14 @@ OutboundPayload(text=..., extra={"inbound": {...}})
 FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
 ```
 
+#### 工具调用进度（直连 AgentRunner）
+
+当 **未配置 Gateway**（`ChannelRuntime.gateway_base_url` 为空）且 `ChannelDispatcher` 调用 **直连** `AgentRunner` 时，**仅在当前会话已开启推送** 的情况下，在本轮请求上订阅 `AgentRunner.event_stream` 的 `tool` 流：每次工具 **开始 / 结束 / 异常** 会格式化为 `[进度] ...` 文本，经 `FeishuChannel.feishu_send_progress()` 发到同一 `chat_id`（尽量沿用入站消息的回复线/话题，与 `deliver` 一致）。
+
+- **会话开关（默认关闭）**：在飞书消息中发送 **`/tool_exec_start`** 后，本会话开始推送工具进度；发送 **`/tool_exec_stop`** 后停止。状态保存在 `SessionEntry.metadata["feishu_tool_progress_push"]`。同一消息可在命令后紧跟正文，例如：`/tool_exec_start 请列出当前目录`（会先开启推送，再让 Agent 处理「请列出当前目录」）。
+- **总开关（仍生效）**：根配置 `channels.feishu.progress_updates: false`，或环境变量 `MW4AGENT_FEISHU_PROGRESS=0`，会关闭整个能力（即使已 `/tool_exec_start`）。
+- **Gateway 模式**：当前通过 `agent` + `agent.wait` 同步等待完成，**不会**收到上述事件流；若需要飞书侧实时进度，需后续用 Gateway 的 WebSocket/事件流对接（或改为直连 AgentRunner）。
+
 ### 1.2 关键组件设计
 
 - **`mw4agent/channels/plugins/feishu.py`**

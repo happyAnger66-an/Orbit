@@ -445,3 +445,30 @@ class FeishuChannel(ChannelPlugin):
         except Exception as e:
             logger.exception("[feishu] deliver failed: %s", e)
             raise
+
+    async def feishu_send_progress(self, text: str, ctx: InboundContext) -> None:
+        """Send a non-final progress line (tool loop / LLM status) to the same Feishu chat/thread.
+
+        Used by ChannelDispatcher when AgentRunner streams tool events; failures are logged and ignored
+        so a bad progress send does not fail the whole agent run.
+        """
+        extra = ctx.extra if isinstance(ctx.extra, dict) else {}
+        chat_id: str | None = extra.get("chat_id") or extra.get("chatId")
+        reply_to_id = extra.get("message_id") or extra.get("messageId")
+        thread_id = extra.get("thread_id") or extra.get("threadId")
+        if not chat_id and str(ctx.session_id or "").strip() and str(ctx.session_id) != "unknown":
+            chat_id = str(ctx.session_id).strip()
+        if not chat_id:
+            logger.debug("[feishu] progress skipped: no chat_id session_id=%s", ctx.session_id)
+            return
+        try:
+            await send_text_outbound(
+                cfg=None,
+                to=str(chat_id),
+                text=text,
+                reply_to_id=reply_to_id,
+                thread_id=thread_id,
+                feishu_cfg=self._feishu_cfg,
+            )
+        except Exception as e:
+            logger.warning("[feishu] progress message failed: %s", e)

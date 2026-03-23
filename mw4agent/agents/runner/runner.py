@@ -790,12 +790,15 @@ class AgentRunner:
         if not tool:
             raise ValueError(f"Tool '{tool_name}' not found")
 
+        run_id_for_stream = (context or {}).get("run_id")
+
         # Emit tool start event
         await self.event_stream.emit(
             StreamEvent(
                 stream="tool",
                 type="start",
                 data={
+                    "run_id": run_id_for_stream,
                     "tool_call_id": tool_call_id,
                     "tool_name": normalized_tool_name,
                     "params": params,
@@ -813,6 +816,7 @@ class AgentRunner:
                     stream="tool",
                     type="end",
                     data={
+                        "run_id": run_id_for_stream,
                         "tool_call_id": tool_call_id,
                         "tool_name": normalized_tool_name,
                         "success": result.success,
@@ -830,6 +834,7 @@ class AgentRunner:
                     stream="tool",
                     type="error",
                     data={
+                        "run_id": run_id_for_stream,
                         "tool_call_id": tool_call_id,
                         "tool_name": normalized_tool_name,
                         "error": str(e),

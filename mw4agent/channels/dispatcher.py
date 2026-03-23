@@ -10,9 +10,10 @@ Design:
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
+from ..agents.types import StreamEvent as AgentStreamEvent
 from ..agents.runner.runner import AgentRunner
 from ..agents.session.manager import SessionManager
 from ..agents.types import AgentRunParams
@@ -20,6 +21,13 @@ from ..gateway.client import call_rpc
 from ..log import get_logger
 from .mention_gating import resolve_mention_gating
 from .registry import ChannelRegistry, get_channel_registry
+from .feishu_agent_progress import (
+    FEISHU_TOOL_PROGRESS_META_KEY,
+    feishu_progress_updates_enabled,
+    feishu_session_wants_tool_progress,
+    format_agent_stream_event_for_feishu,
+    parse_feishu_tool_progress_command,
+)
 from .types import InboundContext, OutboundPayload
 
 logger = get_logger(__name__)
@@ -60,6 +68,34 @@ class ChannelDispatcher:
             logger.debug("skipping message due to mention gating")
             return
 
+        # Feishu：/tool_exec_start | /tool_exec_stop 控制本会话是否推送工具循环进度（默认不推送）
+        if _is_feishu_channel(ctx.channel):
+            cmd, remainder = parse_feishu_tool_progress_command(ctx.text or "")
+            if cmd is not None:
+                entry = self.runtime.session_manager.get_or_create_session(
+                    ctx.session_id, ctx.session_key, ctx.agent_id
+                )
+                meta = dict(entry.metadata or {})
+                meta[FEISHU_TOOL_PROGRESS_META_KEY] = cmd
+                self.runtime.session_manager.update_session(ctx.session_id, metadata=meta)
+                ctx = replace(ctx, text=remainder)
+                if not remainder.strip():
+                    ack = (
+                        "已开启工具进度推送（本会话）。Agent 调用工具时将推送 `[进度]` 消息。发送 `/tool_exec_stop` 可关闭。"
+                        if cmd
+                        else "已关闭工具进度推送。发送 `/tool_exec_start` 可重新开启。"
+                    )
+                    extra = {
+                        "inbound": {
+                            "extra": ctx.extra if isinstance(ctx.extra, dict) else {},
+                            "session_id": ctx.session_id,
+                        }
+                    }
+                    await plugin.deliver(
+                        OutboundPayload(text=ack, is_error=False, extra=extra)
+                    )
+                    return
+
         # Feishu：在用户消息下添加「思考/正在输入」表情，回复完成或异常后移除（与 OpenClaw 一致）
         typing_state = None
         if _is_feishu_channel(ctx.channel) and isinstance(ctx.extra, dict):
@@ -73,6 +109,35 @@ class ChannelDispatcher:
 
                     typing_state = await add_typing_indicator(str(msg_id))
 
+        # Feishu + direct AgentRunner: stream tool-call progress into the chat (same thread when possible).
+        progress_run_id: Optional[str] = None
+        progress_handler = None
+        es = self.runtime.agent_runner.event_stream
+        if (
+            _is_feishu_channel(ctx.channel)
+            and not self.runtime.gateway_base_url
+            and feishu_progress_updates_enabled()
+            and feishu_session_wants_tool_progress(self.runtime.session_manager, ctx.session_id)
+        ):
+            progress_run_id = str(uuid.uuid4())
+
+            async def progress_handler(event: AgentStreamEvent) -> None:
+                data = event.data if isinstance(event.data, dict) else {}
+                if data.get("run_id") != progress_run_id:
+                    return
+                line = format_agent_stream_event_for_feishu(event)
+                if not line:
+                    return
+                fn = getattr(plugin, "feishu_send_progress", None)
+                if not callable(fn):
+                    return
+                try:
+                    await fn(line, ctx)
+                except Exception as e:
+                    logger.debug("feishu progress handler error: %s", e)
+
+            es.subscribe("tool", progress_handler)
+
         try:
             # Call agent via Gateway RPC (aligned with OpenClaw) or direct AgentRunner
             if self.runtime.gateway_base_url:
@@ -80,7 +145,9 @@ class ChannelDispatcher:
                 result_text = await self._call_agent_via_gateway(ctx)
             else:
                 logger.debug("calling agent direct")
-                result_text = await self._call_agent_direct(ctx)
+                result_text = await self._call_agent_direct(
+                    ctx, run_id=progress_run_id if progress_handler is not None else None
+                )
 
             if result_text:
                 logger.info("channel=%s reply length=%s", ctx.channel, len(result_text))
@@ -101,6 +168,8 @@ class ChannelDispatcher:
             else:
                 logger.warning("channel=%s agent returned empty reply", ctx.channel)
         finally:
+            if progress_handler is not None:
+                es.unsubscribe("tool", progress_handler)
             if typing_state is not None:
                 fn_end = getattr(plugin, "feishu_typing_end", None)
                 if callable(fn_end):
@@ -156,10 +225,11 @@ class ChannelDispatcher:
         reply_text = payload.get("replyText") or ""
         return reply_text.strip() if reply_text else None
 
-    async def _call_agent_direct(self, ctx: InboundContext) -> Optional[str]:
+    async def _call_agent_direct(self, ctx: InboundContext, *, run_id: Optional[str] = None) -> Optional[str]:
         """Call AgentRunner directly (simplified mode)."""
         params = AgentRunParams(
             message=ctx.text,
+            run_id=run_id,
             session_key=ctx.session_key,
             session_id=ctx.session_id,
             agent_id=ctx.agent_id,
