@@ -51,3 +51,24 @@ def test_sessions_sessions_json_output(tmp_path: Path, monkeypatch, capsys) -> N
     assert isinstance(data.get("sessions"), list)
     assert any(s.get("sessionId") == "s1" for s in data["sessions"])
 
+
+def test_sessions_without_agent_aggregates_all_agents(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("MW4AGENT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+
+    mgr = MultiAgentSessionManager(agent_manager=AgentManager())
+    s_main = mgr.get_or_create_session(session_id="s_main_1", session_key="k_main", agent_id="main")
+    mgr.update_session(s_main.session_id, agent_id="main", message_count=1)
+    s_coders = mgr.get_or_create_session(session_id="s_coders_1", session_key="k_coders", agent_id="coders")
+    mgr.update_session(s_coders.session_id, agent_id="coders", message_count=9)
+
+    _run_cli(["mw4agent", "sessions", "--json"])
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    rows = data.get("sessions") or []
+    by_sid = {r.get("sessionId"): r for r in rows}
+    assert "s_main_1" in by_sid
+    assert "s_coders_1" in by_sid
+    assert by_sid["s_main_1"]["agentId"] == "main"
+    assert by_sid["s_coders_1"]["agentId"] == "coders"
+

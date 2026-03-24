@@ -47,9 +47,15 @@ class MultiAgentSessionManager:
         self._for_agent(agent_id).update_session(session_id, **kwargs)
 
     def list_sessions(self, agent_id: Optional[str] = None) -> List[SessionEntry]:
-        # If no agent_id provided, default to main for now (OpenClaw has visibility policies;
-        # mw4agent can add cross-agent listing later).
-        return self._for_agent(agent_id).list_sessions(agent_id=agent_id)
+        # If no agent_id provided, aggregate sessions across all known agents.
+        # This matches user expectation for `mw4agent sessions` as a global overview.
+        if agent_id and str(agent_id).strip():
+            return self._for_agent(agent_id).list_sessions(agent_id=agent_id)
+
+        merged: List[SessionEntry] = []
+        for aid in self.agent_manager.list_agents():
+            merged.extend(self._for_agent(aid).list_sessions(agent_id=aid))
+        return sorted(merged, key=lambda s: int(s.updated_at or 0), reverse=True)
 
     def find_latest_by_session_key(self, session_key: str, *, agent_id: Optional[str] = None) -> Optional[SessionEntry]:
         return self._for_agent(agent_id).find_latest_by_session_key(session_key)

@@ -53,6 +53,8 @@ from ..session.transcript import (
 from ..tools.web_search_tool import is_web_search_enabled
 
 MAX_TOOL_ROUNDS = 16
+TOOL_PROCESSING_START_SEC = 30.0
+TOOL_PROCESSING_INTERVAL_SEC = 60.0
 
 
 def _resolve_run_workspace_dir(params: AgentRunParams) -> str:
@@ -791,6 +793,7 @@ class AgentRunner:
             raise ValueError(f"Tool '{tool_name}' not found")
 
         run_id_for_stream = (context or {}).get("run_id")
+        started_at_ms = int(time.time() * 1000)
 
         # Emit tool start event
         await self.event_stream.emit(
@@ -806,6 +809,27 @@ class AgentRunner:
             )
         )
 
+        async def _emit_tool_processing() -> None:
+            # After a grace period (default 30s), emit periodic processing events (default every 60s).
+            await asyncio.sleep(max(0.0, float(TOOL_PROCESSING_START_SEC)))
+            while True:
+                now_ms = int(time.time() * 1000)
+                elapsed_ms = max(0, now_ms - started_at_ms)
+                await self.event_stream.emit(
+                    StreamEvent(
+                        stream="tool",
+                        type="processing",
+                        data={
+                            "run_id": run_id_for_stream,
+                            "tool_call_id": tool_call_id,
+                            "tool_name": normalized_tool_name,
+                            "elapsed_ms": elapsed_ms,
+                        },
+                    )
+                )
+                await asyncio.sleep(max(0.0, float(TOOL_PROCESSING_INTERVAL_SEC)))
+
+        processing_task = asyncio.create_task(_emit_tool_processing())
         try:
             # Execute tool
             result = await tool.execute(tool_call_id, params, context)
@@ -842,3 +866,9 @@ class AgentRunner:
                 )
             )
             raise
+        finally:
+            processing_task.cancel()
+            try:
+                await processing_task
+            except asyncio.CancelledError:
+                pass

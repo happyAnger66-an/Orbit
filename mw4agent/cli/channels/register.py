@@ -291,6 +291,36 @@ def register_channels_cli(program: click.Group, _ctx) -> None:
             if agent_id:
                 click.echo(f"  agent_id: {str(agent_id).strip()}")
 
+    @feishu_group.command(name="list", help="List configured Feishu accounts and app ids")
+    @click.option("--json", "json_output", is_flag=True, help="Print JSON output")
+    def feishu_list(json_output: bool) -> None:
+        current = read_root_config()
+        feishu_section = (current.get("channels") or {}).get("feishu") or {}
+        rows = list_feishu_accounts(feishu_section, env_app_id="", env_app_secret="")
+        items: list[Dict[str, Any]] = []
+        for acc in rows:
+            items.append(
+                {
+                    "account": acc.account_key,
+                    "channel": acc.plugin_channel_id,
+                    "app_id": acc.app_id,
+                    "connection_mode": acc.connection_mode,
+                    "agent_id": acc.agent_id,
+                }
+            )
+        if json_output:
+            click.echo(json.dumps({"ok": True, "items": items}, ensure_ascii=False, indent=2))
+            return
+        if not items:
+            click.echo("No Feishu channels configured.")
+            return
+        click.echo("Configured Feishu channels:")
+        for it in items:
+            click.echo(
+                f"  - account={it['account']}, channel={it['channel']}, "
+                f"app_id={it['app_id']}, agent_id={it['agent_id']}, mode={it['connection_mode']}"
+            )
+
     @feishu_group.command(name="run", help="Run the Feishu channel server (webhook or websocket)")
     @click.option("--agent-id", default="main", show_default=True, help="Agent id (multi-agent mode)")
     @click.option("--session-file", default="", show_default=False, help="Legacy: single session store path")

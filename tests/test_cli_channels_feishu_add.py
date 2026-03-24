@@ -72,3 +72,87 @@ def test_feishu_add_json_output_redacts_secret(tmp_path, monkeypatch) -> None:
     assert out.get("ok") is True
     assert out["feishu"]["app_secret"] == "********"
     assert out["feishu"]["app_id"] == "a"
+
+
+def test_feishu_list_shows_single_default_account(tmp_path, monkeypatch) -> None:
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.delenv("MW4AGENT_SECRET_KEY", raising=False)
+
+    runner = CliRunner()
+    add_res = runner.invoke(
+        _build_cli(),
+        ["channels", "feishu", "add", "--app-id", "app_default_1", "--app-secret", "sec_1"],
+    )
+    assert add_res.exit_code == 0, add_res.output
+
+    list_res = runner.invoke(_build_cli(), ["channels", "feishu", "list", "--json"])
+    assert list_res.exit_code == 0, list_res.output
+    raw = list_res.output
+    brace = raw.find("{")
+    assert brace >= 0, raw
+    out = json.loads(raw[brace:])
+    assert out.get("ok") is True
+    items = out.get("items") or []
+    assert len(items) == 1
+    row = items[0]
+    assert row.get("account") == "default"
+    assert row.get("channel") == "feishu"
+    assert row.get("app_id") == "app_default_1"
+
+
+def test_feishu_list_shows_multiple_accounts(tmp_path, monkeypatch) -> None:
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.delenv("MW4AGENT_SECRET_KEY", raising=False)
+
+    runner = CliRunner()
+    r1 = runner.invoke(
+        _build_cli(),
+        [
+            "channels",
+            "feishu",
+            "add",
+            "--account",
+            "coders",
+            "--app-id",
+            "app_coders",
+            "--app-secret",
+            "sec_coders",
+            "--agent-id",
+            "agent_coders",
+        ],
+    )
+    assert r1.exit_code == 0, r1.output
+    r2 = runner.invoke(
+        _build_cli(),
+        [
+            "channels",
+            "feishu",
+            "add",
+            "--account",
+            "ops",
+            "--app-id",
+            "app_ops",
+            "--app-secret",
+            "sec_ops",
+            "--agent-id",
+            "agent_ops",
+        ],
+    )
+    assert r2.exit_code == 0, r2.output
+
+    list_res = runner.invoke(_build_cli(), ["channels", "feishu", "list", "--json"])
+    assert list_res.exit_code == 0, list_res.output
+    raw = list_res.output
+    brace = raw.find("{")
+    assert brace >= 0, raw
+    out = json.loads(raw[brace:])
+    items = out.get("items") or []
+    by_acct = {x.get("account"): x for x in items}
+    assert by_acct["coders"]["app_id"] == "app_coders"
+    assert by_acct["coders"]["channel"] == "feishu:coders"
+    assert by_acct["ops"]["app_id"] == "app_ops"
+    assert by_acct["ops"]["channel"] == "feishu:ops"

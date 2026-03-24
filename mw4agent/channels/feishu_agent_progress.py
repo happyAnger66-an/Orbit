@@ -114,4 +114,14 @@ def format_agent_stream_event_for_feishu(event: StreamEvent) -> Optional[str]:
         err = str(data.get("error") or "unknown error")
         return f"[进度] `{name}` 执行异常\n{_truncate(err, _MAX_RESULT_CHARS)}"
 
+    if event.type == "processing":
+        elapsed_ms = data.get("elapsed_ms")
+        try:
+            elapsed_ms_i = int(elapsed_ms) if elapsed_ms is not None else 0
+        except Exception:
+            elapsed_ms_i = 0
+        elapsed_sec = max(0, elapsed_ms_i // 1000)
+        # 统一输出秒数，避免不同客户端本地化差异。
+        return f"[进度] `{name}` 仍在执行中，已耗时 {elapsed_sec}s"
+
     return None

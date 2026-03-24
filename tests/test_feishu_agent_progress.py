@@ -70,6 +70,23 @@ def test_format_tool_error() -> None:
     assert "boom" in t
 
 
+def test_format_tool_processing() -> None:
+    ev = StreamEvent(
+        stream="tool",
+        type="processing",
+        data={
+            "run_id": "r1",
+            "tool_name": "exec",
+            "elapsed_ms": 123456,
+        },
+    )
+    t = format_agent_stream_event_for_feishu(ev)
+    assert t is not None
+    assert "exec" in t
+    assert "仍在执行中" in t
+    assert "123s" in t
+
+
 def test_parse_tool_progress_commands() -> None:
     assert parse_feishu_tool_progress_command("/tool_exec_start") == (True, "")
     assert parse_feishu_tool_progress_command("  /tool_exec_start  ") == (True, "")
