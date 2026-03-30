@@ -897,16 +897,14 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  void send();
+                  if (!busy) void send();
                 }
               }}
-              disabled={busy}
             />
             <div className="flex flex-col justify-end gap-2 shrink-0">
               <ChatThinkToolCheckbox
                 checked={streamReasoning}
                 onChange={setStreamReasoning}
-                disabled={busy}
                 t={t}
               />
               <button
