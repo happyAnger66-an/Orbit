@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import time
 import uuid
@@ -34,6 +35,12 @@ def _orch_dir(orch_id: str) -> str:
 
 def _orch_state_path(orch_id: str) -> str:
     return os.path.join(_orch_dir(orch_id), "orch.json")
+
+
+def _strip_at_mentions(text: str) -> str:
+    """Remove ``@agentId`` tokens for the model prompt (same charset as normalize_agent_id)."""
+    s = re.sub(r"@[a-zA-Z0-9._-]+\s*", " ", text or "")
+    return " ".join(s.split()).strip()
 
 
 @dataclass
@@ -70,6 +77,9 @@ class OrchState:
     dagNodeSessions: Dict[str, str] = field(default_factory=dict)  # DAG node id -> sessionId
     # Last send: off | on | stream — controls AgentRunParams.reasoning_level for agent runs
     orchReasoningLevel: Optional[str] = None
+    # Next linear run: reply only from this agent (round_robin / router_llm), then cleared
+    pendingDirectAgent: Optional[str] = None
+    pendingSingleTurn: bool = False
 
 
 class Orchestrator:
@@ -77,6 +87,58 @@ class Orchestrator:
         self.agent_manager = agent_manager
         self.runner = runner
         self._tasks: Dict[str, asyncio.Task] = {}
+
+    @staticmethod
+    def _patch_router_llm(
+        old: Optional[Dict[str, str]], patch: Optional[Dict[str, str]]
+    ) -> Optional[Dict[str, str]]:
+        """Merge router LLM fields; omit empty ``api_key`` in patch to keep stored key."""
+        if not isinstance(patch, dict):
+            return old
+        base: Dict[str, str] = {}
+        if isinstance(old, dict) and old:
+            o = old
+            pairs = [
+                ("provider", o.get("provider")),
+                ("model", o.get("model")),
+                ("base_url", o.get("base_url") or o.get("baseUrl")),
+                ("api_key", o.get("api_key") or o.get("apiKey")),
+                ("thinking_level", o.get("thinking_level") or o.get("thinkingLevel")),
+            ]
+            for nk, v in pairs:
+                if v is not None and str(v).strip():
+                    base[nk] = str(v).strip()
+        allowed_map = {
+            "provider": "provider",
+            "model": "model",
+            "base_url": "base_url",
+            "baseUrl": "base_url",
+            "api_key": "api_key",
+            "apiKey": "api_key",
+            "thinking_level": "thinking_level",
+            "thinkingLevel": "thinking_level",
+        }
+        for k, v in patch.items():
+            if k not in allowed_map:
+                continue
+            nk = allowed_map[k]
+            if nk == "api_key":
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                base[nk] = s
+                continue
+            if v is None:
+                base.pop(nk, None)
+                continue
+            s = str(v).strip()
+            if not s:
+                base.pop(nk, None)
+            else:
+                base[nk] = s
+        return base or None
 
     @staticmethod
     def _reasoning_level_for_orch(st: OrchState) -> Optional[str]:
@@ -143,6 +205,12 @@ class Orchestrator:
             x = orch_rl_raw.strip().lower()
             if x in ("off", "on", "stream"):
                 orch_rl = x
+        pd_raw = data.get("pendingDirectAgent") or data.get("pending_direct_agent")
+        pd_agent: Optional[str] = None
+        if isinstance(pd_raw, str) and pd_raw.strip():
+            pd_agent = normalize_agent_id(pd_raw.strip())
+        ps_raw = data.get("pendingSingleTurn")
+        pending_single = ps_raw is True or str(ps_raw).lower() in ("1", "true", "yes")
         return OrchState(
             orchId=str(data.get("orchId") or orch_id),
             sessionKey=str(data.get("sessionKey") or ""),
@@ -164,6 +232,8 @@ class Orchestrator:
             dagParallelism=dpar,
             dagNodeSessions=dag_node_sess,
             orchReasoningLevel=orch_rl,
+            pendingDirectAgent=pd_agent,
+            pendingSingleTurn=pending_single,
         )
 
     def get(self, orch_id: str) -> Optional[OrchState]:
@@ -266,7 +336,97 @@ class Orchestrator:
             dagProgress=dag_progress,
             dagParallelism=dag_parallelism,
             dagNodeSessions=dag_node_sess,
+            pendingDirectAgent=None,
+            pendingSingleTurn=False,
         )
+        self._save(st)
+        return st
+
+    def update(
+        self,
+        orch_id: str,
+        *,
+        session_key: str,
+        name: str,
+        participants: List[str],
+        max_rounds: int = 8,
+        strategy: str = "round_robin",
+        router_llm: Optional[Dict[str, str]] = None,
+        dag: Optional[Dict[str, Any]] = None,
+    ) -> OrchState:
+        """Update orchestration metadata. Refuses when ``status == running``."""
+        oid = (orch_id or "").strip()
+        if not oid:
+            raise ValueError("orchId is required")
+        st = self._load(oid)
+        if not st:
+            raise ValueError("orchestration not found")
+        if (st.status or "").strip() == "running":
+            raise ValueError("orchestration is running")
+
+        strat = (strategy or "round_robin").strip() or "round_robin"
+        dag_spec: Optional[Dict[str, Any]] = None
+        dag_progress: Optional[Dict[str, Any]] = None
+        dag_parallelism = 4
+        dag_node_sess: Dict[str, str] = {}
+        parts: List[str]
+        agent_sess: Dict[str, str]
+        router_llm_out: Optional[Dict[str, str]]
+
+        if dag is not None:
+            dag_spec = normalize_dag_dict(dag if isinstance(dag, dict) else {})
+            strat = "dag"
+            dag_parallelism = max(1, min(32, int(dag_spec.get("parallelism") or 4)))
+            parts = sorted(
+                {normalize_agent_id(n["agentId"]) for n in dag_spec["nodes"]},
+                key=lambda x: x,
+            )
+            if not parts:
+                parts = ["main"]
+            dag_progress = {
+                str(n["id"]): {"status": "pending", "outputPreview": ""} for n in dag_spec["nodes"]
+            }
+            old_ns = dict(st.dagNodeSessions or {})
+            dag_node_sess = {
+                str(n["id"]): old_ns.get(str(n["id"])) or str(uuid.uuid4())
+                for n in dag_spec["nodes"]
+            }
+            old_as = dict(st.agentSessions or {})
+            agent_sess = {p: old_as.get(p) or str(uuid.uuid4()) for p in parts}
+            router_llm_out = None
+        else:
+            if strat.lower() == "dag":
+                raise ValueError("dag spec is required when strategy is dag")
+            parts = [normalize_agent_id(x) for x in participants if str(x).strip()]
+            parts = [p for i, p in enumerate(parts) if p and p not in parts[:i]]
+            if not parts:
+                parts = ["main"]
+            old_as = dict(st.agentSessions or {})
+            agent_sess = {p: old_as.get(p) or str(uuid.uuid4()) for p in parts}
+            dag_spec = None
+            dag_progress = None
+            dag_parallelism = 4
+            dag_node_sess = {}
+            if strat == "router_llm":
+                router_llm_out = self._patch_router_llm(st.routerLlm, router_llm)
+            else:
+                router_llm_out = None
+
+        sk = (session_key or "").strip()
+        st.sessionKey = sk or st.sessionKey
+        st.name = (name or "").strip()
+        st.strategy = strat
+        st.maxRounds = max(1, int(max_rounds or 8))
+        st.participants = parts
+        st.agentSessions = agent_sess
+        st.dagSpec = dag_spec
+        st.dagProgress = dag_progress
+        st.dagParallelism = dag_parallelism
+        st.dagNodeSessions = dag_node_sess
+        st.routerLlm = router_llm_out
+        st.error = None
+        st.pendingDirectAgent = None
+        st.pendingSingleTurn = False
         self._save(st)
         return st
 
@@ -300,6 +460,7 @@ class Orchestrator:
         orch_id: str,
         message: str,
         reasoning_level: Optional[str] = None,
+        target_agent: Optional[str] = None,
     ) -> OrchState:
         st = self._load(orch_id)
         if not st:
@@ -309,6 +470,18 @@ class Orchestrator:
         text = (message or "").strip()
         if not text:
             raise ValueError("message required")
+        strat = (st.strategy or "").strip()
+        norm_target: Optional[str] = None
+        if target_agent and str(target_agent).strip():
+            tid = normalize_agent_id(str(target_agent).strip())
+            if tid in st.participants:
+                norm_target = tid
+        if strat == "dag":
+            st.pendingDirectAgent = None
+            st.pendingSingleTurn = False
+        else:
+            st.pendingDirectAgent = norm_target
+            st.pendingSingleTurn = bool(norm_target)
         if reasoning_level is not None:
             v = str(reasoning_level).strip().lower()
             st.orchReasoningLevel = v if v in ("off", "on", "stream") else "stream"
@@ -351,18 +524,31 @@ class Orchestrator:
             if st.status != "running":
                 return
             try:
+                direct = (getattr(st, "pendingDirectAgent", None) or "").strip()
+                single = bool(getattr(st, "pendingSingleTurn", False))
+                st.pendingDirectAgent = None
+                st.pendingSingleTurn = False
+                self._save(st)
+
                 last_text = st.messages[-1].text if st.messages else ""
                 start_round = int(st.currentRound or 0)
-                target_round = start_round + int(st.maxRounds or 8)
+                if single and direct and direct in st.participants:
+                    target_round = start_round + 1
+                else:
+                    target_round = start_round + int(st.maxRounds or 8)
                 for r in range(start_round, target_round):
                     st = self._load(orch_id)
                     if not st or st.status != "running":
                         return
                     # Speaker selection (phase A):
+                    # - @mention: first turn to that participant (single-turn when set in send)
                     # - round_robin: deterministic rotation
-                    # - router_llm: choose via LLM if configured, else fallback to round_robin
+                    # - router_llm: choose via LLM if configured (skipped when @mention picks speaker)
                     agent_id = st.participants[r % max(1, len(st.participants))]
-                    if (st.strategy or "").strip() == "router_llm" and st.routerLlm:
+                    direct_first = r == start_round and bool(direct) and direct in st.participants
+                    if direct_first:
+                        agent_id = direct
+                    elif (st.strategy or "").strip() == "router_llm" and st.routerLlm:
                         try:
                             router = st.routerLlm
                             agent_list = ", ".join(st.participants)
@@ -406,9 +592,17 @@ class Orchestrator:
                     )
                     extra_system_prompt = f"{bootstrap}\n\n{orch_hint}".strip() if bootstrap else orch_hint
 
+                    if r == start_round and st.messages and st.messages[-1].role == "user":
+                        raw_u = st.messages[-1].text
+                        agent_message = _strip_at_mentions(raw_u)
+                        if not agent_message.strip():
+                            agent_message = raw_u
+                    else:
+                        agent_message = last_text
+
                     result = await self.runner.run(
                         AgentRunParams(
-                            message=last_text,
+                            message=agent_message,
                             run_id=str(uuid.uuid4()),
                             session_key=f"orch:{orch_id}",
                             session_id=session_id,

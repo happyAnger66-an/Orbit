@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   callRpc,
   getAgentSessionHistory,
@@ -109,6 +109,14 @@ export function ChatPanel({
   /** 与网关 AgentRunParams.reasoning_level 对齐：stream 时才会 WS 推送 think/推理块 */
   const [streamReasoning, setStreamReasoning] = useState(true);
   const [assistantAvatarSrc, setAssistantAvatarSrc] = useState("/icons/robot.png");
+  const messagesWrapRef = useRef<HTMLElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  /** After opening chat / switching agent, pin to bottom once history is loaded. */
+  const forceChatScrollBottomRef = useRef(false);
+
+  useEffect(() => {
+    forceChatScrollBottomRef.current = true;
+  }, [sessionResetKey, initialAgentId]);
 
   useEffect(() => {
     setInput("");
@@ -176,6 +184,21 @@ export function ChatPanel({
       cancelled = true;
     };
   }, [agentId]);
+
+  useLayoutEffect(() => {
+    if (!sessionReady || messages.length === 0) return;
+    const el = messagesWrapRef.current;
+    const end = messagesEndRef.current;
+    if (!el || !end) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distance < 160;
+    if (forceChatScrollBottomRef.current || nearBottom) {
+      requestAnimationFrame(() => {
+        end.scrollIntoView({ block: "end" });
+      });
+    }
+    forceChatScrollBottomRef.current = false;
+  }, [messages, sessionReady]);
 
   /**
    * Apply an update to the assistant row for this run_id.
@@ -731,7 +754,10 @@ export function ChatPanel({
         </div>
       ) : (
         <>
-          <main className="flex-1 overflow-y-auto py-3 space-y-3 min-h-0 w-full">
+          <main
+            ref={messagesWrapRef}
+            className="flex-1 overflow-y-auto py-3 space-y-3 min-h-0 w-full"
+          >
             {messages.map((m) => (
               <div
                 key={m.id}
@@ -824,6 +850,7 @@ export function ChatPanel({
                 </div>
               </div>
             ))}
+            <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
           </main>
 
           <footer className="py-3 border-t border-[var(--border)] shrink-0 w-full">

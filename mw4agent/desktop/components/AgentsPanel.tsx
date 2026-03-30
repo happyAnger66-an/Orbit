@@ -10,7 +10,9 @@ import {
   readAgentWorkspaceFile,
   resolveAgentDefaults,
   setAgentAvatar,
+  testLlmConnection,
   type ListedAgent,
+  updateAgentLlm,
   writeAgentWorkspaceFile,
 } from "@/lib/gateway";
 import { AGENT_HEADER_FILES, agentHeaderSrc } from "@/lib/agentHeaders";
@@ -95,6 +97,11 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
   const baseUrlTouchedRef = useRef(false);
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmThinking, setLlmThinking] = useState("");
+  const [createLlmTestLoading, setCreateLlmTestLoading] = useState(false);
+  const [createLlmTestBanner, setCreateLlmTestBanner] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
   const [providers, setProviders] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -105,6 +112,22 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
   const [avatarEditSelection, setAvatarEditSelection] = useState("");
   const [avatarEditError, setAvatarEditError] = useState<string | null>(null);
   const [avatarEditSaving, setAvatarEditSaving] = useState(false);
+
+  const [llmEditOpen, setLlmEditOpen] = useState(false);
+  const [llmEditAgentId, setLlmEditAgentId] = useState("");
+  const [llmEditProvider, setLlmEditProvider] = useState("");
+  const [llmEditModel, setLlmEditModel] = useState("");
+  const [llmEditBaseUrl, setLlmEditBaseUrl] = useState("");
+  const [llmEditApiKey, setLlmEditApiKey] = useState("");
+  const [llmEditThinking, setLlmEditThinking] = useState("");
+  const [llmEditKeyConfigured, setLlmEditKeyConfigured] = useState(false);
+  const [llmEditError, setLlmEditError] = useState<string | null>(null);
+  const [llmEditSaving, setLlmEditSaving] = useState(false);
+  const [editLlmTestLoading, setEditLlmTestLoading] = useState(false);
+  const [editLlmTestBanner, setEditLlmTestBanner] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
 
   const [fileEditorOpen, setFileEditorOpen] = useState(false);
   const [fileEditorAgentId, setFileEditorAgentId] = useState("");
@@ -144,16 +167,18 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
     setLlmApiKey("");
     setLlmThinking("");
     setSelectedAvatar("");
+    setCreateLlmTestBanner(null);
+    setCreateLlmTestLoading(false);
     setCreateOpen(true);
   }, []);
 
   useEffect(() => {
-    if (!createOpen) return;
+    if (!createOpen && !llmEditOpen) return;
     void listLlmProviders().then((r) => {
       if (r.ok) setProviders(r.providers);
       else setProviders(["echo", "openai", "deepseek", "vllm", "aliyun-bailian"]);
     });
-  }, [createOpen]);
+  }, [createOpen, llmEditOpen]);
 
   useEffect(() => {
     if (!createOpen) return;
@@ -173,6 +198,8 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
   const closeCreateModal = useCallback(() => {
     setCreateOpen(false);
     setModalError(null);
+    setCreateLlmTestBanner(null);
+    setCreateLlmTestLoading(false);
   }, []);
 
   const openAvatarEditor = useCallback((a: ListedAgent) => {
@@ -189,6 +216,125 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
     setAvatarEditError(null);
     setAvatarEditSaving(false);
   }, []);
+
+  const openLlmEditor = useCallback((a: ListedAgent) => {
+    const L = a.llm || {};
+    setLlmEditAgentId(a.agentId);
+    setLlmEditProvider(String(L.provider ?? "").trim());
+    setLlmEditModel(String(L.model ?? "").trim());
+    setLlmEditBaseUrl(String(L.base_url ?? "").trim());
+    setLlmEditThinking(String(L.thinking_level ?? "").trim());
+    setLlmEditApiKey("");
+    setLlmEditKeyConfigured(Boolean(a.llmApiKeyConfigured));
+    setLlmEditError(null);
+    setEditLlmTestBanner(null);
+    setEditLlmTestLoading(false);
+    setLlmEditOpen(true);
+  }, []);
+
+  const closeLlmEditor = useCallback(() => {
+    setLlmEditOpen(false);
+    setLlmEditAgentId("");
+    setLlmEditProvider("");
+    setLlmEditModel("");
+    setLlmEditBaseUrl("");
+    setLlmEditApiKey("");
+    setLlmEditThinking("");
+    setLlmEditKeyConfigured(false);
+    setLlmEditError(null);
+    setLlmEditSaving(false);
+    setEditLlmTestBanner(null);
+    setEditLlmTestLoading(false);
+  }, []);
+
+  const saveLlmEditor = useCallback(async () => {
+    const aid = llmEditAgentId.trim();
+    if (!aid) return;
+    setLlmEditSaving(true);
+    setLlmEditError(null);
+    const llm: Record<string, string> = {
+      provider: llmEditProvider.trim(),
+      model: llmEditModel.trim(),
+      base_url: llmEditBaseUrl.trim(),
+      thinking_level: llmEditThinking.trim(),
+    };
+    if (llmEditApiKey.trim()) {
+      llm.api_key = llmEditApiKey.trim();
+    }
+    const res = await updateAgentLlm(aid, { llm });
+    setLlmEditSaving(false);
+    if (!res.ok) {
+      setLlmEditError(res.error || t("agentsError"));
+      return;
+    }
+    closeLlmEditor();
+    await load();
+  }, [
+    closeLlmEditor,
+    llmEditAgentId,
+    llmEditApiKey,
+    llmEditBaseUrl,
+    llmEditModel,
+    llmEditProvider,
+    llmEditThinking,
+    load,
+    t,
+  ]);
+
+  const runCreateLlmTest = useCallback(async () => {
+    setCreateLlmTestLoading(true);
+    setCreateLlmTestBanner(null);
+    const llm: Record<string, string> = {};
+    if (llmProvider.trim()) llm.provider = llmProvider.trim();
+    if (llmModel.trim()) llm.model = llmModel.trim();
+    if (llmBaseUrl.trim()) llm.base_url = llmBaseUrl.trim();
+    if (llmApiKey.trim()) llm.api_key = llmApiKey.trim();
+    if (llmThinking.trim()) llm.thinking_level = llmThinking.trim();
+    const r = await testLlmConnection({ llm });
+    setCreateLlmTestLoading(false);
+    if (!r.ok) {
+      setCreateLlmTestBanner({ ok: false, text: r.error || t("agentsError") });
+      return;
+    }
+    const detail = r.preview ? `${r.message} · ${r.preview}` : r.message;
+    setCreateLlmTestBanner({ ok: r.success, text: detail });
+  }, [
+    llmApiKey,
+    llmBaseUrl,
+    llmModel,
+    llmProvider,
+    llmThinking,
+    t,
+  ]);
+
+  const runEditLlmTest = useCallback(async () => {
+    const aid = llmEditAgentId.trim();
+    if (!aid) return;
+    setEditLlmTestLoading(true);
+    setEditLlmTestBanner(null);
+    const llm: Record<string, string> = {};
+    if (llmEditProvider.trim()) llm.provider = llmEditProvider.trim();
+    if (llmEditModel.trim()) llm.model = llmEditModel.trim();
+    if (llmEditBaseUrl.trim()) llm.base_url = llmEditBaseUrl.trim();
+    if (llmEditApiKey.trim()) llm.api_key = llmEditApiKey.trim();
+    if (llmEditThinking.trim()) llm.thinking_level = llmEditThinking.trim();
+    const r = await testLlmConnection({ llm, agentId: aid });
+    setEditLlmTestLoading(false);
+    if (!r.ok) {
+      setEditLlmTestBanner({ ok: false, text: r.error || t("agentsError") });
+      return;
+    }
+    const detail = r.preview ? `${r.message} · ${r.preview}` : r.message;
+    setEditLlmTestBanner({ ok: r.success, text: detail });
+  }, [
+    llmEditAgentId,
+    llmEditApiKey,
+    llmEditBaseUrl,
+    llmEditModel,
+    llmEditProvider,
+    llmEditThinking,
+    t,
+  ]);
 
   const saveAvatarEditor = useCallback(async () => {
     const aid = avatarEditAgentId.trim();
@@ -427,6 +573,21 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
                         </button>
                         <button
                           type="button"
+                          title={t("agentsEditLlmTooltip")}
+                          aria-label={t("agentsEditLlmTooltip")}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--panel)] hover:opacity-90 shrink-0"
+                          onClick={() => openLlmEditor(a)}
+                        >
+                          <Image
+                            src="/icons/edit.png"
+                            alt=""
+                            width={20}
+                            height={20}
+                            className="h-5 w-5 object-contain"
+                          />
+                        </button>
+                        <button
+                          type="button"
                           title={t("agentsEditMemoryTooltip")}
                           aria-label={t("agentsEditMemoryTooltip")}
                           className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--panel)] hover:opacity-90 shrink-0"
@@ -620,6 +781,34 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
                     placeholder="off | low | medium | high"
                   />
                 </label>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    title={t("agentsLlmTestTooltip")}
+                    aria-label={t("agentsLlmTestTooltip")}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--panel)] text-xs hover:opacity-90 disabled:opacity-50"
+                    disabled={createLlmTestLoading || submitting}
+                    onClick={() => void runCreateLlmTest()}
+                  >
+                    <Image
+                      src="/icons/test.png"
+                      alt=""
+                      width={16}
+                      height={16}
+                      className="h-4 w-4 object-contain"
+                    />
+                    {t("agentsLlmTest")}
+                  </button>
+                  {createLlmTestBanner ? (
+                    <span
+                      className={`text-[11px] ${
+                        createLlmTestBanner.ok ? "text-emerald-500/90" : "text-red-500/90"
+                      }`}
+                    >
+                      {createLlmTestBanner.text}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button
@@ -637,6 +826,142 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
                   onClick={() => void submitCreate()}
                 >
                   {t("agentsCreateSubmit")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {llmEditOpen ? (
+        <div className="fixed inset-0 z-[52] flex items-center justify-center bg-black/55 p-4">
+          <div
+            className="w-full max-w-lg max-h-[min(90vh,640px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="orbit-edit-llm-title"
+          >
+            <div className="border-b border-[var(--border)] px-4 py-3 flex items-center justify-between">
+              <h3 id="orbit-edit-llm-title" className="text-sm font-semibold">
+                {t("agentsEditLlmTitle", { id: llmEditAgentId })}
+              </h3>
+              <button
+                type="button"
+                className="text-xs text-[var(--muted)] px-2 py-1 rounded hover:bg-[var(--panel)]"
+                onClick={closeLlmEditor}
+              >
+                {t("agentsCreateCancel")}
+              </button>
+            </div>
+            <div className="p-4 space-y-4 text-sm">
+              {llmEditError ? (
+                <p className="text-red-500/90 text-xs">{llmEditError}</p>
+              ) : null}
+              <p className="text-[10px] text-[var(--muted)]">{t("agentsCreateLlmOptional")}</p>
+              <label className="flex flex-col gap-1">
+                <span className="text-[var(--muted)] text-xs">{t("agentsCreateLlmProvider")}</span>
+                <select
+                  className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
+                  value={llmEditProvider}
+                  onChange={(e) => setLlmEditProvider(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {providers.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[var(--muted)] text-xs">{t("agentsCreateLlmModel")}</span>
+                <input
+                  className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
+                  value={llmEditModel}
+                  onChange={(e) => setLlmEditModel(e.target.value)}
+                  placeholder="gpt-4o-mini"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[var(--muted)] text-xs">{t("agentsCreateLlmBaseUrl")}</span>
+                <input
+                  className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
+                  value={llmEditBaseUrl}
+                  onChange={(e) => setLlmEditBaseUrl(e.target.value)}
+                  placeholder="http://127.0.0.1:8000/v1"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[var(--muted)] text-xs">{t("agentsCreateLlmApiKey")}</span>
+                <input
+                  type="password"
+                  className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
+                  value={llmEditApiKey}
+                  onChange={(e) => setLlmEditApiKey(e.target.value)}
+                  autoComplete="off"
+                  placeholder={
+                    llmEditKeyConfigured ? t("agentsEditLlmApiKeyPlaceholder") : undefined
+                  }
+                />
+                {llmEditKeyConfigured ? (
+                  <span className="text-[10px] text-[var(--muted)]">
+                    {t("agentsEditLlmApiKeyHint")}
+                  </span>
+                ) : null}
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[var(--muted)] text-xs">{t("agentsCreateLlmThinking")}</span>
+                <input
+                  className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
+                  value={llmEditThinking}
+                  onChange={(e) => setLlmEditThinking(e.target.value)}
+                  placeholder="off | low | medium | high"
+                />
+              </label>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  title={t("agentsLlmTestTooltip")}
+                  aria-label={t("agentsLlmTestTooltip")}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--panel)] text-xs hover:opacity-90 disabled:opacity-50"
+                  disabled={editLlmTestLoading || llmEditSaving}
+                  onClick={() => void runEditLlmTest()}
+                >
+                  <Image
+                    src="/icons/test.png"
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="h-4 w-4 object-contain"
+                  />
+                  {t("agentsLlmTest")}
+                </button>
+                {editLlmTestBanner ? (
+                  <span
+                    className={`text-[11px] ${
+                      editLlmTestBanner.ok ? "text-emerald-500/90" : "text-red-500/90"
+                    }`}
+                  >
+                    {editLlmTestBanner.text}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg border border-[var(--border)] text-xs"
+                  onClick={closeLlmEditor}
+                  disabled={llmEditSaving}
+                >
+                  {t("agentsCreateCancel")}
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-medium disabled:opacity-50"
+                  disabled={llmEditSaving}
+                  onClick={() => void saveLlmEditor()}
+                >
+                  {t("agentsEditLlmSave")}
                 </button>
               </div>
             </div>

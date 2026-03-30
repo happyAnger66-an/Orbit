@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -18,6 +19,7 @@ import {
   orchestrateGet,
   orchestrateList,
   orchestrateSend,
+  orchestrateUpdate,
   type ListedAgent,
   type AgentWsEvent,
   type OrchMessage,
@@ -25,8 +27,10 @@ import {
   type OrchestrateListItem,
 } from "@/lib/gateway";
 import { specHasCycle } from "@/lib/orchestrateDagFlow";
+import { parseOrchestrateTargetAgent } from "@/lib/orchestrateMention";
 import { useI18n } from "@/lib/i18n";
 import { ChatThinkToolCheckbox } from "@/components/ChatThinkToolCheckbox";
+import { OrchestrateMentionInput } from "@/components/OrchestrateMentionInput";
 import { busyFromOrchestrateStatus } from "@/lib/orchestratePollBusy";
 import { useGatewayWs } from "@/lib/gateway-ws-context";
 
@@ -181,7 +185,10 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [createOpen, setCreateOpen] = useState(false);
+  const [orchFormOpen, setOrchFormOpen] = useState(false);
+  const [orchFormMode, setOrchFormMode] = useState<"create" | "edit">("create");
+  const [orchFormEditId, setOrchFormEditId] = useState("");
+  const [orchEditSessionKey, setOrchEditSessionKey] = useState("desktop-orchestrator");
   const [createName, setCreateName] = useState("");
   const [createMaxRounds, setCreateMaxRounds] = useState("8");
   const [createStrategy, setCreateStrategy] = useState<
@@ -201,6 +208,7 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   const [routerModel, setRouterModel] = useState("");
   const [routerBaseUrl, setRouterBaseUrl] = useState("");
   const [routerApiKey, setRouterApiKey] = useState("");
+  const [routerApiKeyConfigured, setRouterApiKeyConfigured] = useState(false);
   const [routerThinking, setRouterThinking] = useState("");
 
   const [input, setInput] = useState("");
@@ -209,6 +217,7 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   const [live, setLive] = useState<LiveRun | null>(null);
   const messagesWrapRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const forceOrchScrollBottomRef = useRef(false);
 
   useEffect(() => {
     const orchId = selectedOrchId.trim();
@@ -389,12 +398,12 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   }, [loadAgents, loadOrches]);
 
   useEffect(() => {
-    if (!createOpen) return;
+    if (!orchFormOpen) return;
     void listLlmProviders().then((r) => {
       if (r.ok) setProviders(r.providers);
       else setProviders(["echo", "openai", "deepseek", "vllm", "aliyun-bailian"]);
     });
-  }, [createOpen]);
+  }, [orchFormOpen]);
 
   const canSend = useMemo(() => input.trim().length > 0 && Boolean(selectedOrchId), [input, selectedOrchId]);
 
@@ -476,9 +485,16 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
       return { ...prev, messages: [...(prev.messages || []), localUserMsg] };
     });
     const idem = `orch-send-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    const parts = selected?.participants ?? [];
+    const strat = (selected?.strategy || "").trim();
+    const targetAgent =
+      strat !== "dag"
+        ? parseOrchestrateTargetAgent(msgText, parts)
+        : undefined;
     try {
       const r = await orchestrateSend(selectedOrchId, msgText, idem, {
         reasoningLevel: streamReasoning ? "stream" : "off",
+        ...(targetAgent ? { targetAgent } : {}),
       });
       if (!r.ok) {
         setBusy(false);
@@ -502,7 +518,17 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
       setBusy(false);
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [busy, canSend, input, selected?.messages, selectedOrchId, streamReasoning, t]);
+  }, [
+    busy,
+    canSend,
+    input,
+    selected?.messages,
+    selected?.participants,
+    selected?.strategy,
+    selectedOrchId,
+    streamReasoning,
+    t,
+  ]);
 
   const handleDagSpecChange = useCallback((spec: OrchestrateDagSpec) => {
     setCreateDagSpec(spec);
@@ -526,6 +552,9 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   }, []);
 
   const openCreate = useCallback(() => {
+    setOrchFormMode("create");
+    setOrchFormEditId("");
+    setOrchEditSessionKey("desktop-orchestrator");
     setCreateName("");
     setCreateMaxRounds("8");
     setCreateStrategy("round_robin");
@@ -538,9 +567,66 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
     setRouterModel("");
     setRouterBaseUrl("http://127.0.0.1:8000/v1");
     setRouterApiKey("");
+    setRouterApiKeyConfigured(false);
     setRouterThinking("");
-    setCreateOpen(true);
+    setOrchFormOpen(true);
   }, []);
+
+  const openEdit = useCallback(
+    async (o: OrchestrateListItem) => {
+      if (busyFromOrchestrateStatus(o.status)) {
+        setError(t("orchestrateEditRunningError"));
+        return;
+      }
+      setError(null);
+      const r = await orchestrateGet(o.orchId);
+      if (!r.ok) {
+        setError(r.error || t("orchestrateError"));
+        return;
+      }
+      const s = (r.strategy || "round_robin").trim();
+      const strat: "round_robin" | "router_llm" | "dag" =
+        s === "dag" ? "dag" : s === "router_llm" ? "router_llm" : "round_robin";
+      const dagOk =
+        strat === "dag" &&
+        r.dagSpec &&
+        typeof r.dagSpec === "object" &&
+        Array.isArray((r.dagSpec as OrchestrateDagSpec).nodes) &&
+        (r.dagSpec as OrchestrateDagSpec).nodes.length > 0;
+      const spec: OrchestrateDagSpec = dagOk
+        ? (r.dagSpec as OrchestrateDagSpec)
+        : DEFAULT_DAG_SPEC;
+
+      setOrchFormMode("edit");
+      setOrchFormEditId(r.orchId);
+      setOrchEditSessionKey(r.sessionKey?.trim() || "desktop-orchestrator");
+      setCreateName(r.name || "");
+      setCreateMaxRounds(String(Number.isFinite(r.maxRounds) && r.maxRounds > 0 ? r.maxRounds : 8));
+      setCreateStrategy(strat);
+      setCreateDagSpec(spec);
+      setCreateDagJson(JSON.stringify(spec, null, 2));
+      setDagJsonResetKey((k) => k + 1);
+      setDagEditorMode("visual");
+      setCreateParticipants(
+        r.participants?.length ? r.participants : ["main"]
+      );
+      const p1 = r.routerLlm;
+      setRouterProvider(typeof p1?.provider === "string" ? p1.provider : "");
+      setRouterModel(typeof p1?.model === "string" ? p1.model : "");
+      setRouterBaseUrl(
+        typeof p1?.base_url === "string" && p1.base_url.trim()
+          ? p1.base_url
+          : "http://127.0.0.1:8000/v1"
+      );
+      setRouterApiKey("");
+      setRouterApiKeyConfigured(Boolean(r.routerApiKeyConfigured));
+      setRouterThinking(
+        typeof p1?.thinking_level === "string" ? p1.thinking_level : ""
+      );
+      setOrchFormOpen(true);
+    },
+    [t]
+  );
 
   useEffect(() => {
     // When user enters Orchestrate view, refresh data (do not auto-open create dialog).
@@ -549,23 +635,33 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   }, [autoOpenKey]);
 
   useEffect(() => {
-    if (!selectedOrchId) return;
-    // Auto-follow latest message.
+    if (!selectedOrchId.trim()) return;
+    forceOrchScrollBottomRef.current = true;
+  }, [selectedOrchId]);
+
+  useLayoutEffect(() => {
+    const orchId = selectedOrchId.trim();
+    if (!orchId) return;
+    if (selected?.orchId !== orchId) return;
     const el = messagesWrapRef.current;
     const end = messagesEndRef.current;
     if (!el || !end) return;
-    // If user is near bottom, keep following; otherwise don't hijack manual scroll.
     const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const shouldFollow = distanceToBottom < 160;
-    if (!shouldFollow) return;
-    requestAnimationFrame(() => {
-      end.scrollIntoView({ block: "end" });
-    });
-  }, [selectedOrchId, selected?.messages?.length]);
+    const nearBottom = distanceToBottom < 160;
+    if (forceOrchScrollBottomRef.current || nearBottom) {
+      requestAnimationFrame(() => {
+        end.scrollIntoView({ block: "end" });
+      });
+    }
+    forceOrchScrollBottomRef.current = false;
+  }, [selectedOrchId, selected?.orchId, selected?.messages?.length]);
 
-  const doCreate = useCallback(async () => {
+  const doSubmitOrch = useCallback(async () => {
     setError(null);
-    const idem = `orch-create-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    const idem =
+      orchFormMode === "edit"
+        ? `orch-update-${orchFormEditId}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+        : `orch-create-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
     const mr = Number(createMaxRounds || "8");
     let dagSpec: OrchestrateDagSpec | undefined;
     if (createStrategy === "dag") {
@@ -580,30 +676,57 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
         return;
       }
     }
+    const routerPayload =
+      createStrategy === "router_llm"
+        ? {
+            provider: routerProvider || undefined,
+            model: routerModel || undefined,
+            base_url: routerBaseUrl || undefined,
+            api_key: routerApiKey.trim() || undefined,
+            thinking_level: routerThinking || undefined,
+          }
+        : undefined;
+    const sessionKey =
+      orchFormMode === "edit" ? orchEditSessionKey.trim() || "desktop-orchestrator" : "desktop-orchestrator";
+
+    if (orchFormMode === "edit") {
+      const oid = orchFormEditId.trim();
+      if (!oid) return;
+      const res = await orchestrateUpdate({
+        orchId: oid,
+        sessionKey,
+        name: createName.trim() || undefined,
+        participants: createParticipants,
+        maxRounds: Number.isFinite(mr) && mr > 0 ? mr : 8,
+        strategy: createStrategy,
+        dag: dagSpec,
+        routerLlm: routerPayload,
+        idempotencyKey: idem,
+      });
+      if (!res.ok) {
+        setError(res.error || t("orchestrateError"));
+        return;
+      }
+      setOrchFormOpen(false);
+      await loadOrches();
+      return;
+    }
+
     const res = await orchestrateCreate({
-      sessionKey: "desktop-orchestrator",
+      sessionKey,
       name: createName.trim() || undefined,
       participants: createParticipants,
       maxRounds: Number.isFinite(mr) && mr > 0 ? mr : 8,
       strategy: createStrategy,
       dag: dagSpec,
-      routerLlm:
-        createStrategy === "router_llm"
-          ? {
-              provider: routerProvider || undefined,
-              model: routerModel || undefined,
-              base_url: routerBaseUrl || undefined,
-              api_key: routerApiKey || undefined,
-              thinking_level: routerThinking || undefined,
-            }
-          : undefined,
+      routerLlm: routerPayload,
       idempotencyKey: idem,
     });
     if (!res.ok) {
       setError(res.error || t("orchestrateError"));
       return;
     }
-    setCreateOpen(false);
+    setOrchFormOpen(false);
     await loadOrches();
     setSelectedOrchId(res.orchId);
   }, [
@@ -613,6 +736,9 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
     createParticipants,
     createStrategy,
     loadOrches,
+    orchEditSessionKey,
+    orchFormEditId,
+    orchFormMode,
     routerApiKey,
     routerBaseUrl,
     routerModel,
@@ -688,23 +814,43 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                           {o.status} · {((o.participants || []).join(", ") || "—").slice(0, 60)}
                         </div>
                       </button>
-                      <button
-                        type="button"
-                        title={t("orchestrateDelete")}
-                        aria-label={t("orchestrateDelete")}
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] hover:opacity-90 shrink-0 ${
-                          active ? "bg-white/10" : "bg-[var(--bg)]"
-                        }`}
-                        onClick={() => void doDelete(o)}
-                      >
-                        <Image
-                          src="/icons/del.png"
-                          alt=""
-                          width={18}
-                          height={18}
-                          className="h-[18px] w-[18px] object-contain"
-                        />
-                      </button>
+                      <div className="flex items-start gap-1 shrink-0">
+                        <button
+                          type="button"
+                          title={t("orchestrateEditTooltip")}
+                          aria-label={t("orchestrateEditTooltip")}
+                          disabled={busyFromOrchestrateStatus(o.status)}
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] hover:opacity-90 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+                            active ? "bg-white/10" : "bg-[var(--bg)]"
+                          }`}
+                          onClick={() => void openEdit(o)}
+                        >
+                          <Image
+                            src="/icons/edit.png"
+                            alt=""
+                            width={18}
+                            height={18}
+                            className="h-[18px] w-[18px] object-contain"
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          title={t("orchestrateDelete")}
+                          aria-label={t("orchestrateDelete")}
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] hover:opacity-90 shrink-0 ${
+                            active ? "bg-white/10" : "bg-[var(--bg)]"
+                          }`}
+                          onClick={() => void doDelete(o)}
+                        >
+                          <Image
+                            src="/icons/del.png"
+                            alt=""
+                            width={18}
+                            height={18}
+                            className="h-[18px] w-[18px] object-contain"
+                          />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -889,17 +1035,17 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
           </div>
 
           <div className="mt-3 flex gap-2 items-stretch">
-            <input
-              className="flex-1 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm"
+            <OrchestrateMentionInput
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={setInput}
+              onSubmit={() => void send()}
+              busy={busy}
               placeholder={t("orchestratePrompt")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!busy) void send();
-                }
-              }}
+              participants={selected?.participants ?? []}
+              hintBelow={
+                selected?.strategy !== "dag" ? t("orchestrateMentionHint") : null
+              }
+              noMatchLabel={t("orchestrateMentionNoMatch")}
             />
             <div className="flex flex-col justify-end gap-2 shrink-0">
               <ChatThinkToolCheckbox
@@ -920,7 +1066,7 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
         </div>
       </div>
 
-      {createOpen ? (
+      {orchFormOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
           role="presentation"
@@ -934,12 +1080,18 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
           >
             <div className="border-b border-[var(--border)] px-4 py-3 flex items-center justify-between">
               <h3 id="orbit-create-orch-title" className="text-sm font-semibold">
-                {t("orchestrateCreate")}
+                {orchFormMode === "edit"
+                  ? t("orchestrateEditTitle", {
+                      name:
+                        (createName || "").trim() ||
+                        (orchFormEditId ? orchFormEditId.slice(0, 8) : "—"),
+                    })
+                  : t("orchestrateCreate")}
               </h3>
               <button
                 type="button"
                 className="text-xs text-[var(--muted)] px-2 py-1 rounded hover:bg-[var(--panel)]"
-                onClick={() => setCreateOpen(false)}
+                onClick={() => setOrchFormOpen(false)}
               >
                 {t("closeDialog")}
               </button>
@@ -1111,7 +1263,15 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                       value={routerApiKey}
                       onChange={(e) => setRouterApiKey(e.target.value)}
                       autoComplete="off"
+                      placeholder={
+                        routerApiKeyConfigured ? t("agentsEditLlmApiKeyPlaceholder") : undefined
+                      }
                     />
+                    {routerApiKeyConfigured ? (
+                      <span className="text-[10px] text-[var(--muted)]">
+                        {t("agentsEditLlmApiKeyHint")}
+                      </span>
+                    ) : null}
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-[var(--muted)] text-xs">{t("agentsCreateLlmThinking")}</span>
@@ -1129,16 +1289,16 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                 <button
                   type="button"
                   className="px-3 py-2 rounded-lg border border-[var(--border)] text-xs"
-                  onClick={() => setCreateOpen(false)}
+                  onClick={() => setOrchFormOpen(false)}
                 >
                   {t("orchestrateCancel")}
                 </button>
                 <button
                   type="button"
                   className="px-3 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-medium"
-                  onClick={() => void doCreate()}
+                  onClick={() => void doSubmitOrch()}
                 >
-                  {t("orchestrateCreate")}
+                  {orchFormMode === "edit" ? t("orchestrateEditSave") : t("orchestrateCreate")}
                 </button>
               </div>
             </div>

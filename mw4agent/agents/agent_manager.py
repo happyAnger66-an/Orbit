@@ -246,6 +246,54 @@ class AgentManager:
         self.save(cfg)
         return cfg
 
+    def update_llm(self, agent_id: str, llm: Optional[Dict[str, Any]]) -> AgentConfig:
+        """Merge ``llm`` fields into ``agent.json`` (empty string clears a field).
+
+        Keys not present in ``llm`` are left unchanged. ``api_key`` is only updated
+        when a non-empty value is supplied (omit the key to keep the stored key).
+        """
+        aid = normalize_agent_id(agent_id)
+        cfg = self.get(aid)
+        if cfg is None:
+            cfg = self.get_or_create(aid)
+        base: Dict[str, str] = dict(cfg.llm or {})
+        if not isinstance(llm, dict) or not llm:
+            return cfg
+        allowed_map = {
+            "provider": "provider",
+            "model": "model",
+            "model_id": "model",
+            "base_url": "base_url",
+            "baseUrl": "base_url",
+            "api_key": "api_key",
+            "apiKey": "api_key",
+            "thinking_level": "thinking_level",
+            "thinkingLevel": "thinking_level",
+        }
+        for k, v in llm.items():
+            if k not in allowed_map:
+                continue
+            nk = allowed_map[k]
+            if nk == "api_key":
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                base[nk] = s
+                continue
+            if v is None:
+                base.pop(nk, None)
+                continue
+            s = str(v).strip()
+            if not s:
+                base.pop(nk, None)
+            else:
+                base[nk] = s
+        cfg.llm = base or None
+        self.save(cfg)
+        return cfg
+
     def save(self, cfg: AgentConfig) -> None:
         aid = normalize_agent_id(cfg.agent_id)
         now = int(time.time() * 1000)

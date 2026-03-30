@@ -542,6 +542,79 @@ def generate_reply(params: AgentRunParams, *, messages: Optional[List[Dict[str, 
         return fallback, provider, model, LLMUsage()
 
 
+def test_llm_connection(llm: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Send a minimal chat completion using explicit ``llm`` fields (like ``agent.json``).
+
+    Used by Gateway ``llm.test`` for desktop connectivity checks. Does not read global config.
+    """
+    if not isinstance(llm, dict):
+        return {"success": False, "message": "llm must be an object", "preview": None}
+
+    allowed_map = {
+        "provider": "provider",
+        "model": "model",
+        "model_id": "model",
+        "base_url": "base_url",
+        "baseUrl": "base_url",
+        "api_key": "api_key",
+        "apiKey": "api_key",
+        "thinking_level": "thinking_level",
+        "thinkingLevel": "thinking_level",
+    }
+    tmp: Dict[str, str] = {}
+    for k, nk in allowed_map.items():
+        if k not in llm:
+            continue
+        v = llm.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            tmp[nk] = s
+
+    provider = (tmp.get("provider") or "echo").strip().lower()
+    model = tmp.get("model") or ""
+    base_url = (tmp.get("base_url") or "").strip()
+    api_key = (tmp.get("api_key") or "").strip()
+    thinking_level = tmp.get("thinking_level") or "off"
+
+    if provider in ("", "echo", "debug"):
+        return {"success": True, "message": "Echo does not use a remote API.", "preview": None}
+
+    spec = _OPENAI_COMPAT_SPECS.get(provider)
+    if spec:
+        if not model:
+            model = (spec.default_model or "").strip()
+        if not base_url:
+            base_url = (spec.default_base_url or "").strip()
+        if spec.base_url_required and not base_url:
+            return {"success": False, "message": "Base URL is required for this provider.", "preview": None}
+        if spec.require_api_key and not api_key:
+            return {"success": False, "message": "API key is required for this provider.", "preview": None}
+    else:
+        if not base_url or not model:
+            return {"success": False, "message": "Unknown provider: set base URL and model.", "preview": None}
+        if not api_key:
+            api_key = "none"
+
+    safe_model = model or (spec.default_model if spec else "") or "gpt-4o-mini"
+    safe_base = base_url or (spec.default_base_url if spec else "") or "https://api.openai.com"
+
+    try:
+        text, _usage = _call_openai_chat(
+            "Reply with exactly: OK",
+            model=safe_model,
+            api_key=api_key or "none",
+            base_url=safe_base,
+            extra_body=_thinking_extra_body(provider, thinking_level),
+            timeout_s=25.0,
+        )
+        preview = (text or "").strip()[:400]
+        return {"success": True, "message": "Request succeeded.", "preview": preview or None}
+    except Exception as e:
+        return {"success": False, "message": str(e).strip() or type(e).__name__, "preview": None}
+
+
 def list_providers() -> Tuple[str, ...]:
     """Return registered OpenAI-compatible provider ids (excluding echo)."""
     return tuple(_OPENAI_COMPAT_SPECS.keys())

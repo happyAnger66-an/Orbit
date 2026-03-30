@@ -89,6 +89,14 @@ export type AgentWsEvent = {
   ts?: number;
 };
 
+/** Per-agent LLM overrides (from ``agents.list``, ``api_key`` never included). */
+export type ListedAgentLlm = {
+  provider?: string;
+  model?: string;
+  base_url?: string;
+  thinking_level?: string;
+};
+
 export type ListedAgent = {
   agentId: string;
   configured?: boolean;
@@ -97,6 +105,9 @@ export type ListedAgent = {
   sessionsFile?: string;
   /** Basename under ``/icons/headers/`` (desktop UI). */
   avatar?: string;
+  /** Omitted ``api_key`` for safety; use ``llmApiKeyConfigured`` when needed. */
+  llm?: ListedAgentLlm;
+  llmApiKeyConfigured?: boolean;
   createdAt?: number;
   updatedAt?: number;
   runStatus?: {
@@ -276,6 +287,46 @@ export type SetAgentAvatarResult =
   | { ok: false; error?: string };
 
 /** Set or clear (empty string) per-agent avatar basename. */
+export type UpdateAgentLlmBody = {
+  llm: {
+    provider?: string;
+    model?: string;
+    base_url?: string;
+    api_key?: string;
+    thinking_level?: string;
+  };
+};
+
+export type UpdateAgentLlmResult =
+  | { ok: true; agentId: string; llm?: ListedAgentLlm; llmApiKeyConfigured?: boolean }
+  | { ok: false; error?: string };
+
+/** Patch per-agent LLM (empty string clears a field; omit ``api_key`` to keep stored key). */
+export async function updateAgentLlm(
+  agentId: string,
+  body: UpdateAgentLlmBody
+): Promise<UpdateAgentLlmResult> {
+  const r = await callRpc("agents.update_llm", {
+    agentId: agentId.trim(),
+    llm: body.llm,
+  });
+  if (!r.ok || !r.payload) {
+    return { ok: false, error: r.error?.message || "agents.update_llm failed" };
+  }
+  const p = r.payload;
+  const raw = p.llm;
+  const llm =
+    raw && typeof raw === "object"
+      ? (raw as ListedAgentLlm)
+      : undefined;
+  return {
+    ok: true,
+    agentId: String(p.agentId ?? ""),
+    llm,
+    llmApiKeyConfigured: Boolean(p.llmApiKeyConfigured),
+  };
+}
+
 export async function setAgentAvatar(
   agentId: string,
   avatar: string
@@ -368,6 +419,38 @@ export async function listLlmProviders(): Promise<ListLlmProvidersResult> {
     return { ok: false, error: r.error?.message };
   }
   return { ok: true, providers: (r.payload.providers as string[]) ?? [] };
+}
+
+export type TestLlmConnectionResult =
+  | {
+      ok: true;
+      success: boolean;
+      message: string;
+      preview?: string | null;
+    }
+  | { ok: false; error?: string };
+
+/** Minimal chat completion against current form fields; optional agentId merges saved API key for testing. */
+export async function testLlmConnection(body: {
+  llm: Record<string, string>;
+  agentId?: string;
+}): Promise<TestLlmConnectionResult> {
+  const params: Record<string, unknown> = { llm: body.llm };
+  if (body.agentId?.trim()) {
+    params.agentId = body.agentId.trim();
+  }
+  const r = await callRpc("llm.test", params);
+  if (!r.ok || !r.payload) {
+    return { ok: false, error: r.error?.message || "llm.test failed" };
+  }
+  const p = r.payload;
+  const prev = p.preview;
+  return {
+    ok: true,
+    success: Boolean(p.success),
+    message: String(p.message ?? ""),
+    preview: typeof prev === "string" ? prev : undefined,
+  };
 }
 
 export type OrchMessage = {
@@ -485,6 +568,37 @@ export async function orchestrateCreate(
   };
 }
 
+export type OrchestrateUpdateBody = OrchestrateCreateBody & { orchId: string };
+
+export type OrchestrateUpdateResult =
+  | { ok: true; orchId: string; status: string; sessionKey: string }
+  | { ok: false; error?: string };
+
+export async function orchestrateUpdate(
+  body: OrchestrateUpdateBody
+): Promise<OrchestrateUpdateResult> {
+  const r = await callRpc("orchestrate.update", {
+    orchId: body.orchId.trim(),
+    sessionKey: body.sessionKey,
+    name: body.name,
+    participants: body.participants,
+    maxRounds: body.maxRounds,
+    strategy: body.strategy,
+    dag: body.dag,
+    routerLlm: body.routerLlm,
+    idempotencyKey: body.idempotencyKey,
+  });
+  if (!r.ok || !r.payload) {
+    return { ok: false, error: r.error?.message || "orchestrate.update failed" };
+  }
+  return {
+    ok: true,
+    orchId: String(r.payload.orchId ?? ""),
+    status: String(r.payload.status ?? ""),
+    sessionKey: String(r.payload.sessionKey ?? body.sessionKey),
+  };
+}
+
 export type OrchestrateListItem = {
   orchId: string;
   name?: string;
@@ -526,6 +640,13 @@ export async function orchestrateDelete(orchId: string): Promise<OrchestrateDele
   return { ok: true, deleted: Boolean(r.payload.deleted) };
 }
 
+export type OrchestrateRouterLlmPublic = {
+  provider?: string;
+  model?: string;
+  base_url?: string;
+  thinking_level?: string;
+};
+
 export type OrchestrateGetResult =
   | {
       ok: true;
@@ -545,6 +666,9 @@ export type OrchestrateGetResult =
       dagSpec?: OrchestrateDagSpec | Record<string, unknown> | null;
       dagProgress?: Record<string, { status?: string; outputPreview?: string; error?: string }> | null;
       dagParallelism?: number;
+      /** Excludes ``api_key``; use ``routerApiKeyConfigured`` when editing. */
+      routerLlm?: OrchestrateRouterLlmPublic | null;
+      routerApiKeyConfigured?: boolean;
     }
   | { ok: false; error?: string };
 
@@ -580,6 +704,11 @@ export async function orchestrateGet(orchId: string): Promise<OrchestrateGetResu
         : undefined,
     dagParallelism:
       typeof p.dagParallelism === "number" ? p.dagParallelism : undefined,
+    routerLlm:
+      p.routerLlm != null && typeof p.routerLlm === "object"
+        ? (p.routerLlm as OrchestrateRouterLlmPublic)
+        : undefined,
+    routerApiKeyConfigured: Boolean(p.routerApiKeyConfigured),
   };
 }
 
@@ -591,7 +720,11 @@ export async function orchestrateSend(
   orchId: string,
   message: string,
   idempotencyKey: string,
-  options?: { reasoningLevel?: "off" | "on" | "stream" }
+  options?: {
+    reasoningLevel?: "off" | "on" | "stream";
+    /** @mention target: must match orchestration participant id (round_robin / router_llm). */
+    targetAgent?: string;
+  }
 ): Promise<OrchestrateSendResult> {
   const r = await callRpc("orchestrate.send", {
     orchId: orchId.trim(),
@@ -599,6 +732,9 @@ export async function orchestrateSend(
     idempotencyKey,
     ...(options?.reasoningLevel != null
       ? { reasoningLevel: options.reasoningLevel }
+      : {}),
+    ...(options?.targetAgent?.trim()
+      ? { targetAgent: options.targetAgent.trim() }
       : {}),
   });
   if (!r.ok || !r.payload) {

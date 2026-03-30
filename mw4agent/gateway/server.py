@@ -809,6 +809,13 @@ def create_app(
                 cfg = cfg_existing or agent_manager.get_or_create(aid)
                 sessions_file = resolve_agent_sessions_file(aid)
                 run_st = _run_status_for_agent(state, aid)
+                llm_safe = None
+                llm_key_configured = False
+                if isinstance(cfg.llm, dict) and cfg.llm:
+                    llm_safe = {x: y for x, y in cfg.llm.items() if x != "api_key"}
+                    llm_key_configured = bool(
+                        str(cfg.llm.get("api_key") or "").strip()
+                    )
                 items.append(
                     {
                         "agentId": aid,
@@ -819,6 +826,8 @@ def create_app(
                         "createdAt": cfg.created_at,
                         "updatedAt": cfg.updated_at,
                         "avatar": cfg.avatar,
+                        "llm": llm_safe,
+                        "llmApiKeyConfigured": llm_key_configured,
                         "runStatus": run_st,
                     }
                 )
@@ -921,6 +930,44 @@ def create_app(
                 "id": req_id,
                 "ok": True,
                 "payload": {"agentId": cfg.agent_id, "avatar": cfg.avatar},
+            }
+
+        if method == "agents.update_llm":
+            raw_id = str(params.get("agentId") or "").strip()
+            if not raw_id:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": "agentId is required"},
+                }
+            llm_raw = params.get("llm")
+            llm = llm_raw if isinstance(llm_raw, dict) else None
+            try:
+                cfg = agent_manager.update_llm(raw_id, llm)
+            except ValueError as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": str(e)},
+                }
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            llm_resp = dict(cfg.llm) if cfg.llm else {}
+            llm_resp.pop("api_key", None)
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {
+                    "agentId": cfg.agent_id,
+                    "llm": llm_resp or None,
+                    "llmApiKeyConfigured": bool(
+                        cfg.llm and str(cfg.llm.get("api_key") or "").strip()
+                    ),
+                },
             }
 
         if method == "agents.delete":
@@ -1093,6 +1140,65 @@ def create_app(
             state.set_dedupe(f"orch:create:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=payload))
             return {"id": req_id, "ok": True, "payload": payload}
 
+        if method == "orchestrate.update":
+            orch_id = str(params.get("orchId") or "").strip()
+            if not orch_id:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": "orchId is required"},
+                }
+            session_key = str(params.get("sessionKey") or "orchestrator").strip() or "orchestrator"
+            name = str(params.get("name") or "").strip()
+            participants_raw = params.get("participants")
+            participants = (
+                [str(x) for x in participants_raw if str(x).strip()]
+                if isinstance(participants_raw, list)
+                else []
+            )
+            max_rounds = params.get("maxRounds")
+            strategy = str(params.get("strategy") or "round_robin").strip() or "round_robin"
+            router_llm_raw = params.get("routerLlm")
+            router_llm = dict(router_llm_raw) if isinstance(router_llm_raw, dict) else None
+            try:
+                max_rounds_int = int(max_rounds) if isinstance(max_rounds, (int, float, str)) and str(max_rounds).strip() else 8
+            except Exception:
+                max_rounds_int = 8
+            idem = str(params.get("idempotencyKey") or "").strip()
+            if not idem:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "idempotencyKey required"}}
+            cached = state.get_dedupe(f"orch:update:{idem}")
+            if cached:
+                return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+            dag_raw = params.get("dag")
+            dag = dict(dag_raw) if isinstance(dag_raw, dict) else None
+            try:
+                st = orchestrator.update(
+                    orch_id,
+                    session_key=session_key,
+                    name=name,
+                    participants=participants,
+                    max_rounds=max_rounds_int,
+                    strategy=strategy,
+                    router_llm=router_llm,
+                    dag=dag,
+                )
+            except ValueError as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": str(e)},
+                }
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            payload = {"orchId": st.orchId, "status": st.status, "sessionKey": st.sessionKey}
+            state.set_dedupe(f"orch:update:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=payload))
+            return {"id": req_id, "ok": True, "payload": payload}
+
         if method == "orchestrate.list":
             items = []
             for st in orchestrator.list():
@@ -1132,6 +1238,16 @@ def create_app(
             st = orchestrator.get(orch_id)
             if not st:
                 return {"id": req_id, "ok": False, "error": {"code": "not_found", "message": "orchestration not found"}}
+            rl = getattr(st, "routerLlm", None)
+            router_public = None
+            router_key_configured = False
+            if isinstance(rl, dict) and rl:
+                router_public = {
+                    k: v for k, v in rl.items() if k not in ("api_key", "apiKey")
+                }
+                router_key_configured = bool(
+                    str(rl.get("api_key") or rl.get("apiKey") or "").strip()
+                )
             payload = {
                 "orchId": st.orchId,
                 "name": st.name,
@@ -1149,6 +1265,8 @@ def create_app(
                 "dagSpec": getattr(st, "dagSpec", None),
                 "dagProgress": getattr(st, "dagProgress", None),
                 "dagParallelism": getattr(st, "dagParallelism", 4),
+                "routerLlm": router_public,
+                "routerApiKeyConfigured": router_key_configured,
             }
             return {"id": req_id, "ok": True, "payload": payload}
 
@@ -1169,8 +1287,19 @@ def create_app(
             cached = state.get_dedupe(f"orch:send:{orch_id}:{idem}")
             if cached:
                 return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+            target_raw = params.get("targetAgent") if "targetAgent" in params else params.get("target_agent")
+            target_agent = (
+                str(target_raw).strip()
+                if target_raw is not None and str(target_raw).strip()
+                else None
+            )
             try:
-                st = orchestrator.send(orch_id=orch_id, message=message, reasoning_level=reasoning_level)
+                st = orchestrator.send(
+                    orch_id=orch_id,
+                    message=message,
+                    reasoning_level=reasoning_level,
+                    target_agent=target_agent,
+                )
             except ValueError as e:
                 return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
             payload = {"orchId": st.orchId, "status": st.status, "currentRound": st.currentRound}
@@ -1221,6 +1350,37 @@ def create_app(
                 }
             provs = ["echo", *list(list_providers())]
             return {"id": req_id, "ok": True, "payload": {"providers": provs}}
+
+        if method == "llm.test":
+            try:
+                from ..config.paths import normalize_agent_id
+                from ..llm.backends import test_llm_connection
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            llm_in = params.get("llm")
+            llm: Dict[str, Any] = dict(llm_in) if isinstance(llm_in, dict) else {}
+            aid = str(params.get("agentId") or "").strip()
+            if aid:
+                ak = str(llm.get("api_key") or llm.get("apiKey") or "").strip()
+                if not ak:
+                    cfg_existing = agent_manager.get(normalize_agent_id(aid))
+                    if cfg_existing and cfg_existing.llm:
+                        sk = str(cfg_existing.llm.get("api_key") or "").strip()
+                        if sk:
+                            llm = {**llm, "api_key": sk}
+            try:
+                result = test_llm_connection(llm)
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            return {"id": req_id, "ok": True, "payload": result}
 
         if method == "skills.list":
             try:
