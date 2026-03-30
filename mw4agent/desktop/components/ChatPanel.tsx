@@ -13,6 +13,17 @@ import {
 import { useGatewayWs } from "@/lib/gateway-ws-context";
 import { useI18n } from "@/lib/i18n";
 import { isTauri } from "@/lib/tauri";
+import { ChatThinkToolCheckbox } from "@/components/ChatThinkToolCheckbox";
+
+export type ToolTraceRow = {
+  id: string;
+  name: string;
+  state: "running" | "done" | "error";
+  preview?: string;
+  elapsedMs?: number;
+};
+
+export type PlannedToolCall = { name: string; arguments_preview?: string };
 
 export type ChatMessage = {
   id: string;
@@ -22,7 +33,47 @@ export type ChatMessage = {
   step?: string;
   runId?: string;
   streaming?: boolean;
+  /** 网关 tool 流：开始 / 结束 / 错误 的摘要，便于看工具返回与耗时 */
+  toolTraces?: ToolTraceRow[];
+  /** 网关 llm 流：本轮模型计划调用的工具（预览） */
+  plannedToolCalls?: PlannedToolCall[];
 };
+
+function formatToolResultPreview(r: unknown): string {
+  if (r == null) return "";
+  if (typeof r === "string") return r.length > 6000 ? `${r.slice(0, 6000)}…` : r;
+  try {
+    const s = JSON.stringify(r, null, 0);
+    return s.length > 6000 ? `${s.slice(0, 6000)}…` : s;
+  } catch {
+    return String(r).slice(0, 6000);
+  }
+}
+
+function upsertToolTrace(
+  traces: ToolTraceRow[] | undefined,
+  toolCallId: string,
+  patch: Partial<ToolTraceRow> & { name?: string }
+): ToolTraceRow[] {
+  const list = traces ? [...traces] : [];
+  const idx = list.findIndex((t) => t.id === toolCallId);
+  const base: ToolTraceRow =
+    idx >= 0
+      ? list[idx]
+      : {
+          id: toolCallId,
+          name: (patch.name || "?").trim() || "?",
+          state: "running",
+        };
+  const next: ToolTraceRow = {
+    ...base,
+    ...patch,
+    name: (patch.name ?? base.name).trim() || base.name,
+  };
+  if (idx >= 0) list[idx] = next;
+  else list.push(next);
+  return list;
+}
 
 function newId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -55,6 +106,8 @@ export function ChatPanel({
   const [sessionKey, setSessionKey] = useState("desktop-app");
   const [sessionId, setSessionId] = useState("");
   const [sessionReady, setSessionReady] = useState(true);
+  /** 与网关 AgentRunParams.reasoning_level 对齐：stream 时才会 WS 推送 think/推理块 */
+  const [streamReasoning, setStreamReasoning] = useState(true);
   const [assistantAvatarSrc, setAssistantAvatarSrc] = useState("/icons/robot.png");
 
   useEffect(() => {
@@ -186,15 +239,53 @@ export function ChatPanel({
       if (stream === "tool" && runId) {
         const typ = data.type as string;
         const name = String(data.tool_name || "?");
+        const tcid = String(data.tool_call_id || data.toolCallId || name || newId());
         if (typ === "start") {
           updateAssistantForRun(runId, (m) => ({
             ...m,
             step: t("stepCallingTool", { name }),
+            toolTraces: upsertToolTrace(m.toolTraces, tcid, {
+              name,
+              state: "running",
+            }),
           }));
-        } else if (typ === "end" || typ === "error") {
+        } else if (typ === "processing") {
+          const elapsed = data.elapsed_ms ?? data.elapsedMs;
+          const sec =
+            typeof elapsed === "number" && Number.isFinite(elapsed)
+              ? Math.max(0, Math.round(elapsed / 1000))
+              : 0;
+          updateAssistantForRun(runId, (m) => ({
+            ...m,
+            step: t("chatToolRunning", { name, seconds: sec }),
+            toolTraces: upsertToolTrace(m.toolTraces, tcid, {
+              name,
+              state: "running",
+              elapsedMs: typeof elapsed === "number" ? elapsed : undefined,
+            }),
+          }));
+        } else if (typ === "end") {
+          const ok = data.success !== false;
+          const preview = formatToolResultPreview(data.result);
           updateAssistantForRun(runId, (m) => ({
             ...m,
             step: t("stepToolDone", { name }),
+            toolTraces: upsertToolTrace(m.toolTraces, tcid, {
+              name,
+              state: ok ? "done" : "error",
+              preview: preview || undefined,
+            }),
+          }));
+        } else if (typ === "error") {
+          const err = String(data.error || "error");
+          updateAssistantForRun(runId, (m) => ({
+            ...m,
+            step: t("stepToolDone", { name }),
+            toolTraces: upsertToolTrace(m.toolTraces, tcid, {
+              name,
+              state: "error",
+              preview: err,
+            }),
           }));
         }
         return;
@@ -202,10 +293,13 @@ export function ChatPanel({
 
       if (stream === "assistant" && runId) {
         if (data.reasoning != null) {
-          updateAssistantForRun(runId, (m) => ({
-            ...m,
-            reasoning: String(data.reasoning).trim(),
-          }));
+          const chunk = String(data.reasoning).trim();
+          if (chunk) {
+            updateAssistantForRun(runId, (m) => ({
+              ...m,
+              reasoning: (m.reasoning ? `${m.reasoning}\n\n` : "") + chunk,
+            }));
+          }
         }
         const text =
           data.text != null
@@ -240,10 +334,34 @@ export function ChatPanel({
       }
 
       if (stream === "llm" && runId) {
+        const rawCalls = data.tool_calls ?? data.toolCalls;
+        if (Array.isArray(rawCalls) && rawCalls.length) {
+          const planned: PlannedToolCall[] = [];
+          for (const c of rawCalls) {
+            if (!c || typeof c !== "object") continue;
+            const o = c as Record<string, unknown>;
+            planned.push({
+              name: String(o.name ?? "?"),
+              arguments_preview:
+                typeof o.arguments_preview === "string"
+                  ? o.arguments_preview
+                  : typeof o.argumentsPreview === "string"
+                    ? o.argumentsPreview
+                    : undefined,
+            });
+          }
+          if (planned.length) {
+            updateAssistantForRun(runId, (m) => ({
+              ...m,
+              plannedToolCalls: planned,
+            }));
+          }
+        }
         if (data.thinking != null && String(data.thinking).trim()) {
+          const chunk = String(data.thinking).trim();
           updateAssistantForRun(runId, (m) => ({
             ...m,
-            reasoning: String(data.thinking).trim(),
+            reasoning: (m.reasoning ? `${m.reasoning}\n\n` : "") + chunk,
           }));
         }
         const content =
@@ -285,7 +403,7 @@ export function ChatPanel({
       agentId: agentId.trim() || "main",
       idempotencyKey: idem,
       channel: "desktop",
-      reasoningLevel: "off",
+      reasoningLevel: streamReasoning ? "stream" : "off",
     };
     if (sessionId.trim()) {
       params.sessionId = sessionId.trim();
@@ -578,7 +696,7 @@ export function ChatPanel({
               {t("chatWorkPrompt")}
             </p>
           </div>
-          <div className="flex w-full max-w-xl mx-auto gap-2 justify-center">
+          <div className="flex w-full max-w-xl mx-auto gap-2 items-stretch justify-center">
             <textarea
               className="flex-1 min-h-[48px] max-h-40 min-w-0 px-3 py-2.5 rounded-xl bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-sm resize-y shadow-sm"
               placeholder={t("placeholder")}
@@ -593,14 +711,22 @@ export function ChatPanel({
               }}
               rows={3}
             />
-            <button
-              type="button"
-              className="shrink-0 self-end px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-sm font-medium disabled:opacity-50 h-[48px]"
-              disabled={inputBlocked || !input.trim()}
-              onClick={() => void sendMessage()}
-            >
-              {t("send")}
-            </button>
+            <div className="flex flex-col justify-end gap-2 shrink-0">
+              <ChatThinkToolCheckbox
+                checked={streamReasoning}
+                onChange={setStreamReasoning}
+                disabled={busy}
+                t={t}
+              />
+              <button
+                type="button"
+                className="shrink-0 px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-sm font-medium disabled:opacity-50 min-h-[44px]"
+                disabled={inputBlocked || !input.trim()}
+                onClick={() => void sendMessage()}
+              >
+                {t("send")}
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -638,10 +764,60 @@ export function ChatPanel({
                   {m.step ? (
                     <div className="text-xs text-[var(--muted)] mb-1">{m.step}</div>
                   ) : null}
+                  {m.plannedToolCalls && m.plannedToolCalls.length ? (
+                    <div className="text-[10px] text-[var(--muted)] border border-[var(--border)] rounded-md p-2 mb-2 space-y-1 bg-[var(--panel)]/40">
+                      <div className="font-semibold text-[var(--text)]">{t("chatToolPlanned")}</div>
+                      <ul className="list-disc pl-4 space-y-0.5 font-mono break-all">
+                        {m.plannedToolCalls.map((p, i) => (
+                          <li key={`${p.name}-${i}`}>
+                            {p.name}
+                            {p.arguments_preview
+                              ? ` — ${p.arguments_preview.length > 200 ? `${p.arguments_preview.slice(0, 200)}…` : p.arguments_preview}`
+                              : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {m.reasoning ? (
-                    <div className="text-xs text-[var(--muted)] border-l-2 border-[var(--accent)] pl-2 mb-2 whitespace-pre-wrap">
+                    <div className="text-xs text-[var(--muted)] border-l-2 border-[var(--accent)] pl-2 mb-2 whitespace-pre-wrap max-h-64 overflow-y-auto">
                       <span className="font-medium">{t("reasoning")}: </span>
                       {m.reasoning}
+                    </div>
+                  ) : null}
+                  {m.toolTraces && m.toolTraces.length ? (
+                    <div className="text-[10px] border border-[var(--border)] rounded-md p-2 mb-2 bg-[var(--panel)]/50 max-h-52 overflow-y-auto">
+                      <div className="font-semibold text-[var(--muted)] mb-1">{t("chatToolActivity")}</div>
+                      <div className="space-y-2">
+                        {m.toolTraces.map((tr) => (
+                          <div key={tr.id} className="border-b border-[var(--border)]/60 last:border-0 pb-2 last:pb-0">
+                            <div className="flex flex-wrap gap-2 items-baseline font-mono text-[10px]">
+                              <span
+                                className={
+                                  tr.state === "error"
+                                    ? "text-red-400"
+                                    : tr.state === "done"
+                                      ? "text-emerald-400"
+                                      : "text-amber-400"
+                                }
+                              >
+                                {tr.state === "running" ? "…" : tr.state === "done" ? "✓" : "✗"}{" "}
+                                {tr.name}
+                              </span>
+                              {tr.elapsedMs != null ? (
+                                <span className="text-[var(--muted)]">
+                                  {(tr.elapsedMs / 1000).toFixed(1)}s
+                                </span>
+                              ) : null}
+                            </div>
+                            {tr.preview ? (
+                              <pre className="mt-1 whitespace-pre-wrap break-words text-[9px] leading-relaxed text-[var(--text)] opacity-90">
+                                {tr.preview}
+                              </pre>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : null}
                   <div className="text-sm whitespace-pre-wrap">{m.text}</div>
@@ -651,7 +827,7 @@ export function ChatPanel({
           </main>
 
           <footer className="py-3 border-t border-[var(--border)] shrink-0 w-full">
-            <div className="flex w-full max-w-xl mx-auto gap-2">
+            <div className="flex w-full max-w-xl mx-auto gap-2 items-stretch">
               <textarea
                 className="flex-1 min-h-[44px] max-h-40 min-w-0 px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-sm resize-y"
                 placeholder={t("placeholder")}
@@ -665,14 +841,22 @@ export function ChatPanel({
                   }
                 }}
               />
-              <button
-                type="button"
-                className="shrink-0 self-end px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium disabled:opacity-50"
-                disabled={inputBlocked || !input.trim()}
-                onClick={() => void sendMessage()}
-              >
-                {t("send")}
-              </button>
+              <div className="flex flex-col justify-end gap-2 shrink-0">
+                <ChatThinkToolCheckbox
+                  checked={streamReasoning}
+                  onChange={setStreamReasoning}
+                  disabled={busy}
+                  t={t}
+                />
+                <button
+                  type="button"
+                  className="shrink-0 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium disabled:opacity-50 min-h-[40px]"
+                  disabled={inputBlocked || !input.trim()}
+                  onClick={() => void sendMessage()}
+                >
+                  {t("send")}
+                </button>
+              </div>
             </div>
           </footer>
         </>

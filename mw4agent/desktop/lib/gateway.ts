@@ -377,6 +377,20 @@ export type OrchMessage = {
   speaker: string;
   role: "user" | "assistant";
   text: string;
+  /** DAG 节点 id（strategy=dag 时助手消息可能带此字段） */
+  nodeId?: string;
+};
+
+/** 与网关 `orchestrate.create` / `orch.json` 中 dag 字段一致；节点可含 `position` 供后续画布编辑 */
+export type OrchestrateDagSpec = {
+  nodes: Array<{
+    id: string;
+    agentId: string;
+    title?: string;
+    dependsOn?: string[];
+    position?: { x: number; y: number };
+  }>;
+  parallelism?: number;
 };
 
 export type OrchestrateRunBody = {
@@ -386,6 +400,7 @@ export type OrchestrateRunBody = {
   participants: string[];
   maxRounds?: number;
   strategy?: string;
+  dag?: OrchestrateDagSpec;
   routerLlm?: {
     provider?: string;
     model?: string;
@@ -410,6 +425,7 @@ export async function orchestrateRun(
     participants: body.participants,
     maxRounds: body.maxRounds,
     strategy: body.strategy,
+    dag: body.dag,
     routerLlm: body.routerLlm,
     idempotencyKey: body.idempotencyKey,
   });
@@ -430,6 +446,7 @@ export type OrchestrateCreateBody = {
   participants: string[];
   maxRounds?: number;
   strategy?: string;
+  dag?: OrchestrateDagSpec;
   routerLlm?: {
     provider?: string;
     model?: string;
@@ -453,6 +470,7 @@ export async function orchestrateCreate(
     participants: body.participants,
     maxRounds: body.maxRounds,
     strategy: body.strategy,
+    dag: body.dag,
     routerLlm: body.routerLlm,
     idempotencyKey: body.idempotencyKey,
   });
@@ -523,6 +541,10 @@ export type OrchestrateGetResult =
       error?: string;
       createdAt?: number;
       updatedAt?: number;
+      orchSchemaVersion?: number;
+      dagSpec?: OrchestrateDagSpec | Record<string, unknown> | null;
+      dagProgress?: Record<string, { status?: string; outputPreview?: string; error?: string }> | null;
+      dagParallelism?: number;
     }
   | { ok: false; error?: string };
 
@@ -546,6 +568,18 @@ export async function orchestrateGet(orchId: string): Promise<OrchestrateGetResu
     error: typeof p.error === "string" ? p.error : undefined,
     createdAt: typeof p.createdAt === "number" ? p.createdAt : undefined,
     updatedAt: typeof p.updatedAt === "number" ? p.updatedAt : undefined,
+    orchSchemaVersion:
+      typeof p.orchSchemaVersion === "number" ? p.orchSchemaVersion : undefined,
+    dagSpec: p.dagSpec != null ? (p.dagSpec as OrchestrateDagSpec) : undefined,
+    dagProgress:
+      p.dagProgress != null
+        ? (p.dagProgress as Record<
+            string,
+            { status?: string; outputPreview?: string; error?: string }
+          >)
+        : undefined,
+    dagParallelism:
+      typeof p.dagParallelism === "number" ? p.dagParallelism : undefined,
   };
 }
 
@@ -556,12 +590,16 @@ export type OrchestrateSendResult =
 export async function orchestrateSend(
   orchId: string,
   message: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  options?: { reasoningLevel?: "off" | "on" | "stream" }
 ): Promise<OrchestrateSendResult> {
   const r = await callRpc("orchestrate.send", {
     orchId: orchId.trim(),
     message,
     idempotencyKey,
+    ...(options?.reasoningLevel != null
+      ? { reasoningLevel: options.reasoningLevel }
+      : {}),
   });
   if (!r.ok || !r.payload) {
     return { ok: false, error: r.error?.message || "orchestrate.send failed" };

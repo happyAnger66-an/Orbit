@@ -1,7 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import {
   listAgents,
   listLlmProviders,
@@ -12,9 +20,32 @@ import {
   orchestrateSend,
   type ListedAgent,
   type OrchMessage,
+  type OrchestrateDagSpec,
   type OrchestrateListItem,
 } from "@/lib/gateway";
+import { specHasCycle } from "@/lib/orchestrateDagFlow";
 import { useI18n } from "@/lib/i18n";
+import { ChatThinkToolCheckbox } from "@/components/ChatThinkToolCheckbox";
+
+const DEFAULT_DAG_SPEC: OrchestrateDagSpec = {
+  nodes: [
+    { id: "n1", agentId: "main", title: "Step 1", dependsOn: [] },
+    { id: "n2", agentId: "main", title: "Step 2", dependsOn: ["n1"] },
+  ],
+  parallelism: 2,
+};
+
+function DagCanvasLoading() {
+  const { t } = useI18n();
+  return (
+    <div className="text-xs text-[var(--muted)] py-8 text-center">{t("orchestrateDagCanvasLoading")}</div>
+  );
+}
+
+const OrchestrateDagCanvas = dynamic(
+  () => import("./OrchestrateDagCanvas").then((m) => m.OrchestrateDagCanvas),
+  { ssr: false, loading: () => <DagCanvasLoading /> }
+);
 
 function fmtTs(ts?: number): string {
   if (!ts) return "";
@@ -84,17 +115,26 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
     orchId: string;
     name?: string;
     status: string;
+    strategy?: string;
     participants: string[];
     messages: OrchMessage[];
+    dagProgress?: Record<string, { status?: string; outputPreview?: string; error?: string }>;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createMaxRounds, setCreateMaxRounds] = useState("8");
-  const [createStrategy, setCreateStrategy] = useState<"round_robin" | "router_llm">(
-    "round_robin"
+  const [createStrategy, setCreateStrategy] = useState<
+    "round_robin" | "router_llm" | "dag"
+  >("round_robin");
+  const [createDagSpec, setCreateDagSpec] = useState<OrchestrateDagSpec>(DEFAULT_DAG_SPEC);
+  const [createDagJson, setCreateDagJson] = useState(() =>
+    JSON.stringify(DEFAULT_DAG_SPEC, null, 2)
   );
+  const [dagJsonResetKey, setDagJsonResetKey] = useState(0);
+  const [dagEditorMode, setDagEditorMode] = useState<"visual" | "json">("visual");
+  const dagJsonParseTimerRef = useRef<number | null>(null);
   const [createParticipants, setCreateParticipants] = useState<string[]>(["main"]);
   const [addOpen, setAddOpen] = useState(false);
   const [providers, setProviders] = useState<string[]>([]);
@@ -105,6 +145,7 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   const [routerThinking, setRouterThinking] = useState("");
 
   const [input, setInput] = useState("");
+  const [streamReasoning, setStreamReasoning] = useState(true);
   const [busy, setBusy] = useState(false);
   const messagesWrapRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -172,8 +213,10 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
         orchId: r.orchId,
         name: r.name,
         status: r.status,
+        strategy: r.strategy,
         participants: r.participants,
         messages: r.messages || [],
+        dagProgress: r.dagProgress ?? undefined,
       });
       const now = Date.now();
       if (now - lastListRefreshRef.current > 8000) {
@@ -220,7 +263,9 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
       return { ...prev, messages: [...(prev.messages || []), localUserMsg] };
     });
     const idem = `orch-send-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-    const r = await orchestrateSend(selectedOrchId, msgText, idem);
+    const r = await orchestrateSend(selectedOrchId, msgText, idem, {
+      reasoningLevel: streamReasoning ? "stream" : "off",
+    });
     if (!r.ok) {
       setBusy(false);
       setError(r.error || t("orchestrateError"));
@@ -234,16 +279,43 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
         orchId: g.orchId,
         name: g.name,
         status: g.status,
+        strategy: g.strategy,
         participants: g.participants,
         messages: g.messages || [],
+        dagProgress: g.dagProgress ?? undefined,
       });
     }
-  }, [busy, canSend, input, selected?.messages, selectedOrchId, t]);
+  }, [busy, canSend, input, selected?.messages, selectedOrchId, streamReasoning, t]);
+
+  const handleDagSpecChange = useCallback((spec: OrchestrateDagSpec) => {
+    setCreateDagSpec(spec);
+    setCreateDagJson(JSON.stringify(spec, null, 2));
+  }, []);
+
+  const onDagJsonChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+    const txt = e.target.value;
+    setCreateDagJson(txt);
+    if (dagJsonParseTimerRef.current != null) window.clearTimeout(dagJsonParseTimerRef.current);
+    dagJsonParseTimerRef.current = window.setTimeout(() => {
+      try {
+        const parsed = JSON.parse(txt) as OrchestrateDagSpec;
+        if (!parsed.nodes || !Array.isArray(parsed.nodes)) return;
+        setCreateDagSpec(parsed);
+        setDagJsonResetKey((k) => k + 1);
+      } catch {
+        /* 编辑中可能暂时无效 */
+      }
+    }, 400);
+  }, []);
 
   const openCreate = useCallback(() => {
     setCreateName("");
     setCreateMaxRounds("8");
     setCreateStrategy("round_robin");
+    setCreateDagSpec(DEFAULT_DAG_SPEC);
+    setCreateDagJson(JSON.stringify(DEFAULT_DAG_SPEC, null, 2));
+    setDagJsonResetKey(0);
+    setDagEditorMode("visual");
     setCreateParticipants(["main"]);
     setRouterProvider("");
     setRouterModel("");
@@ -278,12 +350,26 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
     setError(null);
     const idem = `orch-create-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
     const mr = Number(createMaxRounds || "8");
+    let dagSpec: OrchestrateDagSpec | undefined;
+    if (createStrategy === "dag") {
+      try {
+        dagSpec = JSON.parse(createDagJson) as OrchestrateDagSpec;
+      } catch {
+        setError(t("orchestrateDagJsonInvalid"));
+        return;
+      }
+      if (specHasCycle(dagSpec)) {
+        setError(t("orchestrateDagCycleError"));
+        return;
+      }
+    }
     const res = await orchestrateCreate({
       sessionKey: "desktop-orchestrator",
       name: createName.trim() || undefined,
       participants: createParticipants,
       maxRounds: Number.isFinite(mr) && mr > 0 ? mr : 8,
       strategy: createStrategy,
+      dag: dagSpec,
       routerLlm:
         createStrategy === "router_llm"
           ? {
@@ -304,6 +390,7 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
     await loadOrches();
     setSelectedOrchId(res.orchId);
   }, [
+    createDagJson,
     createMaxRounds,
     createName,
     createParticipants,
@@ -418,6 +505,17 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
           {selected?.status ? (
             <div className="text-[10px] text-[var(--muted)]">
               {t("orchestrateStatus")}: {selected.status}
+              {selected.strategy === "dag" ? ` · ${t("orchestrateStrategyDag")}` : ""}
+            </div>
+          ) : null}
+          {selected?.strategy === "dag" && selected.dagProgress ? (
+            <div className="text-[9px] text-[var(--muted)] font-mono max-h-20 overflow-y-auto space-y-0.5">
+              {Object.entries(selected.dagProgress).map(([nid, pr]) => (
+                <div key={nid} className="truncate" title={pr.outputPreview || ""}>
+                  {nid}: {pr.status || "?"}
+                  {pr.error ? ` (${pr.error.slice(0, 40)})` : ""}
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
@@ -463,6 +561,14 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                         <span>{m.role}</span>
                         <span>·</span>
                         <span>r{m.round}</span>
+                        {m.nodeId ? (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono">
+                              {t("orchestrateNodeMeta")}:{m.nodeId}
+                            </span>
+                          </>
+                        ) : null}
                         {m.ts ? (
                           <>
                             <span>·</span>
@@ -481,9 +587,9 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex gap-2 items-stretch">
             <input
-              className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm"
+              className="flex-1 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={t("orchestratePrompt")}
@@ -495,14 +601,22 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
               }}
               disabled={busy}
             />
-            <button
-              type="button"
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              onClick={() => void send()}
-              disabled={!canSend || busy}
-            >
-              {t("send")}
-            </button>
+            <div className="flex flex-col justify-end gap-2 shrink-0">
+              <ChatThinkToolCheckbox
+                checked={streamReasoning}
+                onChange={setStreamReasoning}
+                disabled={busy}
+                t={t}
+              />
+              <button
+                type="button"
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 min-h-[40px]"
+                onClick={() => void send()}
+                disabled={!canSend || busy}
+              >
+                {t("send")}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -513,7 +627,7 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
           role="presentation"
         >
           <div
-            className="w-full max-w-lg max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl"
+            className={`w-full ${createStrategy === "dag" ? "max-w-4xl" : "max-w-lg"} max-h-[min(92vh,780px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="orbit-create-orch-title"
@@ -542,59 +656,115 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                 />
               </label>
 
-              <label className="flex flex-col gap-1">
-                <span className="text-[var(--muted)] text-xs">{t("orchestrateMaxRounds")}</span>
-                <input
-                  className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
-                  value={createMaxRounds}
-                  onChange={(e) => setCreateMaxRounds(e.target.value)}
-                  inputMode="numeric"
-                />
-              </label>
+              {createStrategy !== "dag" ? (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[var(--muted)] text-xs">{t("orchestrateMaxRounds")}</span>
+                  <input
+                    className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
+                    value={createMaxRounds}
+                    onChange={(e) => setCreateMaxRounds(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </label>
+              ) : (
+                <p className="text-[10px] text-[var(--muted)]">{t("orchestrateDagNote")}</p>
+              )}
 
               <label className="flex flex-col gap-1">
                 <span className="text-[var(--muted)] text-xs">{t("orchestrateStrategy")}</span>
                 <select
                   className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-xs"
                   value={createStrategy}
-                  onChange={(e) => setCreateStrategy(e.target.value as "round_robin" | "router_llm")}
+                  onChange={(e) =>
+                    setCreateStrategy(e.target.value as "round_robin" | "router_llm" | "dag")
+                  }
                 >
                   <option value="round_robin">{t("orchestrateStrategyRoundRobin")}</option>
                   <option value="router_llm">{t("orchestrateStrategyRouter")}</option>
+                  <option value="dag">{t("orchestrateStrategyDag")}</option>
                 </select>
               </label>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[var(--muted)] text-xs">{t("orchestrateParticipants")}</span>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--panel)] hover:opacity-90"
-                    onClick={() => setAddOpen(true)}
-                  >
-                    {t("orchestrateAddAgent")}
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {createParticipants.map((p) => (
-                    <span
-                      key={p}
-                      className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[10px] font-mono"
+              {createStrategy === "dag" ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`rounded-lg border px-3 py-1.5 text-xs ${
+                        dagEditorMode === "visual"
+                          ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                          : "border-[var(--border)] bg-[var(--panel)] text-[var(--text)]"
+                      }`}
+                      onClick={() => setDagEditorMode("visual")}
                     >
-                      {p}
-                      {createParticipants.length > 1 ? (
-                        <button
-                          type="button"
-                          className="text-[var(--muted)] hover:text-[var(--text)]"
-                          onClick={() => removeParticipant(p)}
-                        >
-                          ×
-                        </button>
-                      ) : null}
-                    </span>
-                  ))}
+                      {t("orchestrateDagVisualTab")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-lg border px-3 py-1.5 text-xs ${
+                        dagEditorMode === "json"
+                          ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                          : "border-[var(--border)] bg-[var(--panel)] text-[var(--text)]"
+                      }`}
+                      onClick={() => setDagEditorMode("json")}
+                    >
+                      {t("orchestrateDagJsonTab")}
+                    </button>
+                  </div>
+                  {dagEditorMode === "visual" ? (
+                    <OrchestrateDagCanvas
+                      key={dagJsonResetKey}
+                      initialSpec={createDagSpec}
+                      listedAgents={listedAgents}
+                      onSpecChange={handleDagSpecChange}
+                      t={t}
+                    />
+                  ) : (
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[var(--muted)] text-xs">{t("orchestrateDagJson")}</span>
+                      <p className="text-[10px] text-[var(--muted)]">{t("orchestrateDagJsonHint")}</p>
+                      <textarea
+                        className="min-h-[220px] px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-[11px] font-mono resize-y"
+                        value={createDagJson}
+                        onChange={onDagJsonChange}
+                        spellCheck={false}
+                      />
+                    </label>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--muted)] text-xs">{t("orchestrateParticipants")}</span>
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--panel)] hover:opacity-90"
+                      onClick={() => setAddOpen(true)}
+                    >
+                      {t("orchestrateAddAgent")}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {createParticipants.map((p) => (
+                      <span
+                        key={p}
+                        className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[10px] font-mono"
+                      >
+                        {p}
+                        {createParticipants.length > 1 ? (
+                          <button
+                            type="button"
+                            className="text-[var(--muted)] hover:text-[var(--text)]"
+                            onClick={() => removeParticipant(p)}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {createStrategy === "router_llm" ? (
                 <div className="border-t border-[var(--border)] pt-3 space-y-3">

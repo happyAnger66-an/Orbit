@@ -68,6 +68,8 @@ class OrchState:
     dagProgress: Optional[Dict[str, Any]] = None  # nodeId -> {status, outputPreview, error?}
     dagParallelism: int = 4
     dagNodeSessions: Dict[str, str] = field(default_factory=dict)  # DAG node id -> sessionId
+    # Last send: off | on | stream — controls AgentRunParams.reasoning_level for agent runs
+    orchReasoningLevel: Optional[str] = None
 
 
 class Orchestrator:
@@ -75,6 +77,15 @@ class Orchestrator:
         self.agent_manager = agent_manager
         self.runner = runner
         self._tasks: Dict[str, asyncio.Task] = {}
+
+    @staticmethod
+    def _reasoning_level_for_orch(st: OrchState) -> Optional[str]:
+        v = getattr(st, "orchReasoningLevel", None)
+        if isinstance(v, str) and v.strip():
+            x = v.strip().lower()
+            if x in ("off", "on", "stream"):
+                return x
+        return "stream"
 
     def _save(self, st: OrchState) -> None:
         st.updatedAt = _now_ms()
@@ -126,6 +137,12 @@ class Orchestrator:
             osv = int(data.get("orchSchemaVersion") or 1)
         except (TypeError, ValueError):
             osv = 1
+        orch_rl_raw = data.get("orchReasoningLevel") or data.get("orch_reasoning_level")
+        orch_rl: Optional[str] = None
+        if isinstance(orch_rl_raw, str):
+            x = orch_rl_raw.strip().lower()
+            if x in ("off", "on", "stream"):
+                orch_rl = x
         return OrchState(
             orchId=str(data.get("orchId") or orch_id),
             sessionKey=str(data.get("sessionKey") or ""),
@@ -146,6 +163,7 @@ class Orchestrator:
             dagProgress=dag_progress,
             dagParallelism=dpar,
             dagNodeSessions=dag_node_sess,
+            orchReasoningLevel=orch_rl,
         )
 
     def get(self, orch_id: str) -> Optional[OrchState]:
@@ -276,7 +294,13 @@ class Orchestrator:
         self.send(orch_id=st.orchId, message=message)
         return self._load(st.orchId) or st
 
-    def send(self, *, orch_id: str, message: str) -> OrchState:
+    def send(
+        self,
+        *,
+        orch_id: str,
+        message: str,
+        reasoning_level: Optional[str] = None,
+    ) -> OrchState:
         st = self._load(orch_id)
         if not st:
             raise ValueError("orchestration not found")
@@ -285,6 +309,9 @@ class Orchestrator:
         text = (message or "").strip()
         if not text:
             raise ValueError("message required")
+        if reasoning_level is not None:
+            v = str(reasoning_level).strip().lower()
+            st.orchReasoningLevel = v if v in ("off", "on", "stream") else "stream"
         st.status = "running"
         st.error = None
         if (st.strategy or "").strip() == "dag" and st.dagSpec and isinstance(st.dagSpec.get("nodes"), list):
@@ -390,6 +417,7 @@ class Orchestrator:
                             deliver=False,
                             extra_system_prompt=extra_system_prompt,
                             workspace_dir=workspace_dir,
+                            reasoning_level=self._reasoning_level_for_orch(st),
                         )
                     )
                     out_text = "\n".join([p.text or "" for p in result.payloads if (p.text or "").strip()]).strip()
@@ -434,7 +462,6 @@ class Orchestrator:
         node: Dict[str, Any],
         orig_user_message: str,
         outputs: Dict[str, str],
-        wave: int,
     ) -> str:
         """Execute one DAG node; returns assistant text (may raise)."""
         agent_id = normalize_agent_id(str(node.get("agentId") or "main"))
@@ -449,6 +476,7 @@ class Orchestrator:
         st = self._load(orch_id)
         if not st:
             return "(no state)"
+        rl = self._reasoning_level_for_orch(st)
         session_id = (st.dagNodeSessions or {}).get(nid) or str(uuid.uuid4())
         st.dagNodeSessions[nid] = session_id
         self._save(st)
@@ -473,6 +501,7 @@ class Orchestrator:
                 deliver=False,
                 extra_system_prompt=extra_system_prompt,
                 workspace_dir=workspace_dir,
+                reasoning_level=rl,
             )
         )
         out_text = "\n".join([p.text or "" for p in result.payloads if (p.text or "").strip()]).strip()
@@ -545,7 +574,6 @@ class Orchestrator:
                                 node=nodes_by_id[nid],
                                 orig_user_message=orig_user_message,
                                 outputs=outputs,
-                                wave=wave,
                             )
                             return nid, text, None
                         except Exception as ex:

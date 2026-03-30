@@ -1029,6 +1029,8 @@ def create_app(
             cached = state.get_dedupe(f"orch:{idem}")
             if cached:
                 return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+            dag_raw = params.get("dag")
+            dag = dict(dag_raw) if isinstance(dag_raw, dict) else None
             try:
                 st = orchestrator.create(
                     session_key=session_key,
@@ -1037,6 +1039,7 @@ def create_app(
                     max_rounds=max_rounds_int,
                     strategy=strategy,
                     router_llm=router_llm,
+                    dag=dag,
                 )
                 orchestrator.send(orch_id=st.orchId, message=message)
             except ValueError as e:
@@ -1072,6 +1075,8 @@ def create_app(
             cached = state.get_dedupe(f"orch:create:{idem}")
             if cached:
                 return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+            dag_raw = params.get("dag")
+            dag = dict(dag_raw) if isinstance(dag_raw, dict) else None
             try:
                 st = orchestrator.create(
                     session_key=session_key,
@@ -1080,6 +1085,7 @@ def create_app(
                     max_rounds=max_rounds_int,
                     strategy=strategy,
                     router_llm=router_llm,
+                    dag=dag,
                 )
             except ValueError as e:
                 return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
@@ -1128,6 +1134,7 @@ def create_app(
                 return {"id": req_id, "ok": False, "error": {"code": "not_found", "message": "orchestration not found"}}
             payload = {
                 "orchId": st.orchId,
+                "name": st.name,
                 "sessionKey": st.sessionKey,
                 "status": st.status,
                 "strategy": st.strategy,
@@ -1138,6 +1145,10 @@ def create_app(
                 "error": st.error,
                 "createdAt": st.createdAt,
                 "updatedAt": st.updatedAt,
+                "orchSchemaVersion": getattr(st, "orchSchemaVersion", 1),
+                "dagSpec": getattr(st, "dagSpec", None),
+                "dagProgress": getattr(st, "dagProgress", None),
+                "dagParallelism": getattr(st, "dagParallelism", 4),
             }
             return {"id": req_id, "ok": True, "payload": payload}
 
@@ -1145,6 +1156,12 @@ def create_app(
             orch_id = str(params.get("orchId") or "").strip()
             message = str(params.get("message") or "").strip()
             idem = str(params.get("idempotencyKey") or "").strip()
+            rl_raw = params.get("reasoningLevel") if "reasoningLevel" in params else params.get("reasoning_level")
+            reasoning_level = None
+            if rl_raw is not None and str(rl_raw).strip():
+                x = str(rl_raw).strip().lower()
+                if x in ("off", "on", "stream"):
+                    reasoning_level = x
             if not orch_id:
                 return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "orchId is required"}}
             if not idem:
@@ -1153,7 +1170,7 @@ def create_app(
             if cached:
                 return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
             try:
-                st = orchestrator.send(orch_id=orch_id, message=message)
+                st = orchestrator.send(orch_id=orch_id, message=message, reasoning_level=reasoning_level)
             except ValueError as e:
                 return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
             payload = {"orchId": st.orchId, "status": st.status, "currentRound": st.currentRound}
