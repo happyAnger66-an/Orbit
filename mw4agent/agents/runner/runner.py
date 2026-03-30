@@ -531,7 +531,7 @@ class AgentRunner:
 
             llm_params = replace(params_for_llm, message=composed_with_skills)
             await asyncio.sleep(0)
-            reply_text, provider, model, usage = generate_reply(llm_params)
+            reply_text, provider, model, usage = await asyncio.to_thread(generate_reply, llm_params)
             await self._emit_llm_response_message(
                 run_id,
                 params,
@@ -656,8 +656,8 @@ class AgentRunner:
                 user_msg = {"role": "user", "content": params_for_llm.message or ""}
                 messages.append(user_msg)
 
-                reply_text, provider, model, usage = generate_reply(
-                    params_for_llm, messages=messages
+                reply_text, provider, model, usage = await asyncio.to_thread(
+                    generate_reply, params_for_llm, messages=messages
                 )
                 await self._emit_llm_response_message(
                     run_id,
@@ -796,8 +796,8 @@ class AgentRunner:
         tool_loop_stop_reason: Optional[str] = None
         for round_idx in range(MAX_TOOL_ROUNDS):
             await asyncio.sleep(0)
-            content, tool_calls, provider, model, usage = generate_reply_with_tools(
-                params, messages, tool_definitions
+            content, tool_calls, provider, model, usage = await asyncio.to_thread(
+                generate_reply_with_tools, params, messages, tool_definitions
             )
             logger.info(
                 "      ----> run_tool_loop %s tool_calls: %s content: %s",
@@ -908,7 +908,9 @@ class AgentRunner:
                 "Use the same language as the user when possible. Do not propose further tool calls."
             )
             messages.append({"role": "system", "content": cap_note})
-            final_text, provider2, model2, usage2 = generate_reply(params, messages=messages)
+            final_text, provider2, model2, usage2 = await asyncio.to_thread(
+                generate_reply, params, messages=messages
+            )
             reply_text = (final_text or "").strip()
             provider, model = provider2, model2
             usage = _merge_llm_usage(usage, usage2)

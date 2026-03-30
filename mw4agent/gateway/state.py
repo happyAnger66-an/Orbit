@@ -50,6 +50,9 @@ class GatewayState:
         self.runs: Dict[str, RunRecord] = {}
         self.ws_clients: Set[asyncio.Queue] = set()
         self.node_registry: NodeRegistry = NodeRegistry()
+        # Best-effort in-memory latest session id per (agent_id, session_key).
+        # This avoids races and allows quick reuse without hitting disk.
+        self.latest_session_by_key: Dict[Tuple[str, str], str] = {}
         # Token required for node connect when set; when None, node connect is allowed without auth (dev).
         self.node_token: Optional[str] = node_token
 

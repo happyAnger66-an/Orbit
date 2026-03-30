@@ -11,6 +11,7 @@ import click
 from ..context import ProgramContext
 from ...agents.agent_manager import AgentManager
 from ...config.paths import normalize_agent_id
+from ...llm.backends import list_providers
 from ...gateway.client import call_rpc
 from ...gateway.wait_timeout import resolve_agent_wait_timeout_ms, rpc_client_timeout_ms
 from ...agents.tools import GatewayLsTool
@@ -67,10 +68,21 @@ def register_agent_cli(program: click.Group, ctx: ProgramContext) -> None:
         help="Set per-agent LLM overrides in agent.json (merged over global mw4agent.json llm)",
     )
     @click.argument("agent_id", nargs=1)
-    @click.option("--provider", default="", help="LLM provider id (e.g. openai, deepseek, echo)")
+    @click.option("--provider", default="", help="LLM provider id (e.g. openai, deepseek, vllm, echo)")
     @click.option("--model-id", "model_id", default="", help="Model id / model_id")
     @click.option("--base-url", default="", help="API base URL (OpenAI-compatible)")
     @click.option("--api-key", default="", help="API key (stored in agent.json; omit to leave unchanged)")
+    @click.option(
+        "--thinking-level",
+        default="",
+        help="Optional thinking level (off|minimal|low|medium|high|xhigh|adaptive)",
+    )
+    @click.option(
+        "--interactive/--no-interactive",
+        "interactive",
+        default=None,
+        help="Interactive wizard (when omitted, auto-enables if no flags provided).",
+    )
     @click.option("--clear", is_flag=True, help="Remove per-agent llm overrides")
     def agent_set_llm(
         agent_id: str,
@@ -78,6 +90,8 @@ def register_agent_cli(program: click.Group, ctx: ProgramContext) -> None:
         model_id: str,
         base_url: str,
         api_key: str,
+        thinking_level: str,
+        interactive: Optional[bool],
         clear: bool,
     ) -> None:
         mgr = AgentManager()
@@ -88,6 +102,79 @@ def register_agent_cli(program: click.Group, ctx: ProgramContext) -> None:
             mgr.save(cfg)
             click.echo(jsonlib.dumps({"ok": True, "agentId": aid, "llm": None}, ensure_ascii=False, indent=2))
             return
+        # Decide interactive mode: if user passed no setters, run wizard by default.
+        if interactive is None:
+            interactive = not any(
+                [
+                    provider.strip(),
+                    model_id.strip(),
+                    base_url.strip(),
+                    api_key.strip(),
+                    thinking_level.strip(),
+                ]
+            )
+        if interactive:
+            llm_cur = dict(cfg.llm or {})
+            provider_choices = ["echo", *list(list_providers())]
+            provider_default = str(llm_cur.get("provider") or "").strip() or "echo"
+            if provider_default not in provider_choices:
+                provider_default = "echo"
+            click.echo("")
+            click.echo(f"Agent: {aid}")
+            click.echo("Interactive LLM configuration (per-agent overrides). Leave blank to keep current value.")
+            # Provider (choice, default=current or echo)
+            provider = click.prompt(
+                "Provider",
+                type=click.Choice(provider_choices, case_sensitive=False),
+                default=provider_default,
+                show_default=True,
+            ).strip()
+            # Model id
+            model_default = str(llm_cur.get("model") or llm_cur.get("model_id") or "").strip()
+            model_id = click.prompt(
+                "Model id",
+                default=model_default or "",
+                show_default=bool(model_default),
+            ).strip()
+            # Base URL
+            base_default = str(llm_cur.get("base_url") or llm_cur.get("baseUrl") or "").strip()
+            base_url = click.prompt(
+                "Base URL (optional)",
+                default=base_default or "",
+                show_default=bool(base_default),
+            ).strip()
+            # API key: blank keeps existing
+            api_key = click.prompt(
+                "API key (optional; blank keeps existing)",
+                default="",
+                show_default=False,
+                hide_input=True,
+                confirmation_prompt=False,
+            ).strip()
+            # Thinking level
+            think_default = str(llm_cur.get("thinking_level") or llm_cur.get("thinkingLevel") or "").strip()
+            thinking_level = click.prompt(
+                "Thinking level (optional)",
+                default=think_default or "",
+                show_default=bool(think_default),
+            ).strip()
+            click.echo("")
+            preview = dict(llm_cur)
+            if provider:
+                preview["provider"] = provider
+            if model_id:
+                preview["model"] = model_id
+            if base_url:
+                preview["base_url"] = base_url
+            if api_key:
+                preview["api_key"] = "********"
+            if thinking_level:
+                preview["thinking_level"] = thinking_level
+            click.echo("Preview (llm overrides):")
+            click.echo(jsonlib.dumps(preview, ensure_ascii=False, indent=2))
+            if not click.confirm("Write this configuration?", default=True):
+                click.echo("Cancelled.")
+                return
         llm = dict(cfg.llm or {})
         if provider.strip():
             llm["provider"] = provider.strip()
@@ -97,6 +184,8 @@ def register_agent_cli(program: click.Group, ctx: ProgramContext) -> None:
             llm["base_url"] = base_url.strip()
         if api_key.strip():
             llm["api_key"] = api_key.strip()
+        if thinking_level.strip():
+            llm["thinking_level"] = thinking_level.strip()
         if not llm:
             raise click.UsageError("Provide at least one of --provider, --model-id, --base-url, --api-key, or --clear")
         cfg.llm = llm

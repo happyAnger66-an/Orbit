@@ -1,8 +1,15 @@
 "use client";
 
+import Image from "next/image";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useState } from "react";
-import { callRpc, getGatewayBaseUrl, type AgentWsEvent } from "@/lib/gateway";
+import {
+  callRpc,
+  getAgentSessionHistory,
+  getGatewayBaseUrl,
+  listAgents,
+  type AgentWsEvent,
+} from "@/lib/gateway";
 import { useGatewayWs } from "@/lib/gateway-ws-context";
 import { useI18n } from "@/lib/i18n";
 import { isTauri } from "@/lib/tauri";
@@ -47,14 +54,75 @@ export function ChatPanel({
   const [agentId, setAgentId] = useState(initialAgentId?.trim() || "main");
   const [sessionKey, setSessionKey] = useState("desktop-app");
   const [sessionId, setSessionId] = useState("");
+  const [sessionReady, setSessionReady] = useState(true);
+  const [assistantAvatarSrc, setAssistantAvatarSrc] = useState("/icons/robot.png");
 
   useEffect(() => {
-    setSessionId(newId());
-    setMessages([]);
     setInput("");
     setBusy(false);
-    setAgentId(initialAgentId?.trim() || "main");
+    const aid = initialAgentId?.trim() || "main";
+    setAgentId(aid);
+    const fromAgentsPanel = Boolean(initialAgentId?.trim());
+    setMessages([]);
+    if (fromAgentsPanel) {
+      setSessionReady(false);
+      setSessionId("");
+    } else {
+      setSessionReady(true);
+      setSessionId(newId());
+    }
   }, [sessionResetKey, initialAgentId]);
+
+  useEffect(() => {
+    const aid = initialAgentId?.trim();
+    if (!aid) return;
+
+    let cancelled = false;
+    setSessionReady(false);
+    const key = sessionKey.trim() || "desktop-app";
+    void getAgentSessionHistory(aid, key).then((r) => {
+      if (cancelled) return;
+      if (!r.ok) {
+        setSessionId(newId());
+        setSessionReady(true);
+        return;
+      }
+      const sid = r.sessionId?.trim();
+      if (sid) {
+        setSessionId(sid);
+        setMessages(
+          r.messages.map((m) => ({
+            id: newId(),
+            role: m.role,
+            text: m.text,
+          }))
+        );
+      } else {
+        setSessionId(newId());
+      }
+      setSessionReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionResetKey, initialAgentId, sessionKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const aid = (agentId || "").trim() || "main";
+    void listAgents().then((r) => {
+      if (!r.ok || cancelled) return;
+      const row = r.agents.find((x) => x.agentId === aid);
+      const av = row?.avatar?.trim();
+      setAssistantAvatarSrc(
+        av ? `/icons/headers/${encodeURIComponent(av)}` : "/icons/robot.png"
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
 
   /**
    * Apply an update to the assistant row for this run_id.
@@ -201,7 +269,7 @@ export function ChatPanel({
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || !sessionReady) return;
     setInput("");
     setBusy(true);
     setMessages((prev) => [
@@ -370,9 +438,11 @@ export function ChatPanel({
   const newSession = () => {
     setSessionId(newId());
     setMessages([]);
+    setSessionReady(true);
   };
 
   const base = getGatewayBaseUrl();
+  const inputBlocked = busy || !sessionReady;
   const connLabel =
     connectionState === "connected"
       ? t("connected")
@@ -383,7 +453,7 @@ export function ChatPanel({
           : t("disconnected");
 
   return (
-    <div className="flex flex-col h-full min-h-0 w-full max-w-5xl mx-auto px-3 sm:px-4">
+    <div className="flex flex-col h-full min-h-0 w-full max-w-3xl mx-auto px-4 sm:px-6">
       {showTopBar ? (
         <header className="flex flex-wrap items-center gap-2 py-3 border-b border-[var(--border)] shrink-0">
           <div className="flex flex-col min-w-0 flex-1">
@@ -494,64 +564,119 @@ export function ChatPanel({
         </label>
       </div>
 
-      <main className="flex-1 overflow-y-auto py-3 space-y-3 min-h-0">
-        {messages.length === 0 && (
-          <p className="text-sm text-[var(--muted)] text-center py-8">
-            {t("placeholder")}
-          </p>
-        )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`rounded-lg px-3 py-2 max-w-[min(100%,42rem)] ${
-              m.role === "user"
-                ? "ml-auto bg-[var(--user-bg)] text-[var(--text)]"
-                : "mr-auto bg-[var(--assistant-bg)] border border-[var(--border)]"
-            }`}
-          >
-            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
-              {m.role === "user" ? t("metaYou") : t("metaAssistant")}
-              {m.runId ? ` · ${m.runId.slice(0, 8)}…` : ""}
-            </div>
-            {m.step ? (
-              <div className="text-xs text-[var(--muted)] mb-1">{m.step}</div>
-            ) : null}
-            {m.reasoning ? (
-              <div className="text-xs text-[var(--muted)] border-l-2 border-[var(--accent)] pl-2 mb-2 whitespace-pre-wrap">
-                <span className="font-medium">{t("reasoning")}: </span>
-                {m.reasoning}
-              </div>
-            ) : null}
-            <div className="text-sm whitespace-pre-wrap">{m.text}</div>
+      {messages.length === 0 ? (
+        <div className="flex flex-1 flex-col min-h-0 items-center justify-center px-2 py-8 gap-6">
+          <div className="flex flex-row flex-wrap items-center justify-center gap-3 px-2">
+            <Image
+              src="/icons/planet.png"
+              alt=""
+              width={48}
+              height={48}
+              className="h-12 w-12 shrink-0 rounded-xl object-contain opacity-95"
+            />
+            <p className="text-base sm:text-lg font-medium text-[var(--text)] tracking-tight">
+              {t("chatWorkPrompt")}
+            </p>
           </div>
-        ))}
-      </main>
-
-      <footer className="py-3 border-t border-[var(--border)] shrink-0">
-        <div className="flex gap-2">
-          <textarea
-            className="flex-1 min-h-[44px] max-h-40 px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-sm resize-y"
-            placeholder={t("placeholder")}
-            value={input}
-            disabled={busy}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void sendMessage();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium disabled:opacity-50"
-            disabled={busy || !input.trim()}
-            onClick={() => void sendMessage()}
-          >
-            {t("send")}
-          </button>
+          <div className="flex w-full max-w-xl mx-auto gap-2 justify-center">
+            <textarea
+              className="flex-1 min-h-[48px] max-h-40 min-w-0 px-3 py-2.5 rounded-xl bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-sm resize-y shadow-sm"
+              placeholder={t("placeholder")}
+              value={input}
+              disabled={inputBlocked}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              rows={3}
+            />
+            <button
+              type="button"
+              className="shrink-0 self-end px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-sm font-medium disabled:opacity-50 h-[48px]"
+              disabled={inputBlocked || !input.trim()}
+              onClick={() => void sendMessage()}
+            >
+              {t("send")}
+            </button>
+          </div>
         </div>
-      </footer>
+      ) : (
+        <>
+          <main className="flex-1 overflow-y-auto py-3 space-y-3 min-h-0 w-full">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={`flex gap-2 max-w-[min(100%,42rem)] items-start ${
+                  m.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
+                }`}
+              >
+                <div className="shrink-0 pt-1">
+                  <Image
+                    src={
+                      m.role === "user" ? "/icons/planet.png" : assistantAvatarSrc
+                    }
+                    alt=""
+                    width={32}
+                    height={32}
+                    className="h-8 w-8 rounded-lg object-cover border border-[var(--border)]"
+                  />
+                </div>
+                <div
+                  className={`min-w-0 flex-1 rounded-lg px-3 py-2 ${
+                    m.role === "user"
+                      ? "bg-[var(--user-bg)] text-[var(--text)]"
+                      : "bg-[var(--assistant-bg)] border border-[var(--border)]"
+                  }`}
+                >
+                  <div className="text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
+                    {m.role === "user" ? t("metaYou") : t("metaAssistant")}
+                    {m.runId ? ` · ${m.runId.slice(0, 8)}…` : ""}
+                  </div>
+                  {m.step ? (
+                    <div className="text-xs text-[var(--muted)] mb-1">{m.step}</div>
+                  ) : null}
+                  {m.reasoning ? (
+                    <div className="text-xs text-[var(--muted)] border-l-2 border-[var(--accent)] pl-2 mb-2 whitespace-pre-wrap">
+                      <span className="font-medium">{t("reasoning")}: </span>
+                      {m.reasoning}
+                    </div>
+                  ) : null}
+                  <div className="text-sm whitespace-pre-wrap">{m.text}</div>
+                </div>
+              </div>
+            ))}
+          </main>
+
+          <footer className="py-3 border-t border-[var(--border)] shrink-0 w-full">
+            <div className="flex w-full max-w-xl mx-auto gap-2">
+              <textarea
+                className="flex-1 min-h-[44px] max-h-40 min-w-0 px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] text-sm resize-y"
+                placeholder={t("placeholder")}
+                value={input}
+                disabled={inputBlocked}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendMessage();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="shrink-0 self-end px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium disabled:opacity-50"
+                disabled={inputBlocked || !input.trim()}
+                onClick={() => void sendMessage()}
+              >
+                {t("send")}
+              </button>
+            </div>
+          </footer>
+        </>
+      )}
     </div>
   );
 }

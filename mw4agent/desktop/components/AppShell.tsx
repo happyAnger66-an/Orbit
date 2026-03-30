@@ -7,9 +7,10 @@ import { getGatewayBaseUrl } from "@/lib/gateway";
 import { useI18n } from "@/lib/i18n";
 import { AgentsPanel } from "@/components/AgentsPanel";
 import { ChatPanel } from "@/components/ChatPanel";
+import { OrchestratePanel } from "@/components/OrchestratePanel";
 import { SkillsPanel } from "@/components/SkillsPanel";
 
-type MainView = "home" | "agents" | "skills";
+type MainView = "home" | "agents" | "skills" | "orchestrate";
 
 export function AppShell() {
   const { t, locale, setLocale } = useI18n();
@@ -18,6 +19,7 @@ export function AppShell() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSessionKey, setChatSessionKey] = useState(0);
   const [chatAgentId, setChatAgentId] = useState<string | undefined>(undefined);
+  const [orchOpenKey, setOrchOpenKey] = useState(0);
 
   const openNewTask = useCallback(() => {
     setChatAgentId(undefined);
@@ -96,6 +98,28 @@ export function AppShell() {
           <button
             type="button"
             onClick={() => {
+              setMainView("orchestrate");
+              setChatOpen(false);
+              setOrchOpenKey((k) => k + 1);
+            }}
+            className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+              mainView === "orchestrate" && !chatOpen
+                ? "bg-[var(--accent)] text-white"
+                : "text-[var(--text)] hover:bg-[var(--bg)]/80"
+            }`}
+          >
+            <Image
+              src="/icons/group.png"
+              alt=""
+              width={20}
+              height={20}
+              className="h-5 w-5 shrink-0 object-contain opacity-90"
+            />
+            {t("orchestrateNav")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setMainView("skills");
               setChatOpen(false);
             }}
@@ -163,8 +187,17 @@ export function AppShell() {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {mainView === "home" && !chatOpen && (
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg)]">
+        {chatOpen ? (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ChatPanel
+              sessionResetKey={chatSessionKey}
+              initialAgentId={chatAgentId}
+              showTopBar
+              onClose={closeChat}
+            />
+          </div>
+        ) : mainView === "home" ? (
           <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
             <div className="flex items-center gap-3">
               <Image
@@ -189,49 +222,14 @@ export function AppShell() {
               {t("newTask")}
             </button>
           </div>
-        )}
-        {mainView === "agents" && (
+        ) : mainView === "agents" ? (
           <AgentsPanel onOpenChatWithAgent={openChatWithAgent} />
+        ) : mainView === "orchestrate" ? (
+          <OrchestratePanel autoOpenKey={orchOpenKey} />
+        ) : (
+          <SkillsPanel />
         )}
-        {mainView === "skills" && <SkillsPanel />}
       </section>
-
-      {chatOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-          role="presentation"
-          onClick={closeChat}
-        >
-          <div
-            className="flex h-[min(90vh,820px)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="orbit-chat-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              id="orbit-chat-title"
-              className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3"
-            >
-              <span className="text-sm font-semibold">{t("newTask")}</span>
-              <button
-                type="button"
-                className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--panel)]"
-                onClick={closeChat}
-              >
-                {t("closeDialog")}
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <ChatPanel
-                sessionResetKey={chatSessionKey}
-                initialAgentId={chatAgentId}
-                showTopBar={false}
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

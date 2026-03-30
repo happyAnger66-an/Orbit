@@ -37,6 +37,8 @@ class AgentConfig:
     metadata: Optional[Dict[str, Any]] = None
     # Optional per-agent LLM overrides (merged with global ~/.mw4agent/mw4agent.json llm section).
     llm: Optional[Dict[str, Any]] = None
+    # Optional UI avatar: basename only, resolved as ``/icons/headers/<avatar>`` in desktop.
+    avatar: Optional[str] = None
 
     def __post_init__(self) -> None:
         now = int(time.time() * 1000)
@@ -50,6 +52,23 @@ class AgentConfig:
 
 def _agent_config_path(agent_id: str) -> Path:
     return Path(resolve_agent_dir(agent_id)) / "agent.json"
+
+
+def normalize_avatar_basename(raw: Optional[str]) -> Optional[str]:
+    """Single safe filename for ``public/icons/headers/<name>`` (no path segments)."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    if any(ch in s for ch in ("/", "\\", "\x00")) or ".." in s:
+        raise ValueError("avatar must be a plain filename (no paths)")
+    base = os.path.basename(s.replace("\\", "/"))
+    if base != s:
+        raise ValueError("avatar must be a plain filename (no paths)")
+    if len(base) > 200:
+        raise ValueError("avatar filename too long")
+    return base
 
 
 class AgentManager:
@@ -90,6 +109,8 @@ class AgentManager:
         meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else None
         llm_raw = data.get("llm")
         llm = dict(llm_raw) if isinstance(llm_raw, dict) else None
+        av = data.get("avatar")
+        avatar = str(av).strip() if isinstance(av, str) and str(av).strip() else None
         return AgentConfig(
             agent_id=aid,
             agent_dir=os.path.abspath(agent_dir),
@@ -98,6 +119,7 @@ class AgentManager:
             updated_at=updated_at,
             metadata=meta,
             llm=llm,
+            avatar=avatar,
         )
 
     def get_or_create(
@@ -132,6 +154,95 @@ class AgentManager:
             metadata={},
             llm=None,
         )
+        self.save(cfg)
+        return cfg
+
+    def create_agent(
+        self,
+        agent_id: str,
+        *,
+        workspace_dir: Optional[str] = None,
+        llm: Optional[Dict[str, Any]] = None,
+        avatar: Optional[str] = None,
+    ) -> AgentConfig:
+        """Create a new agent and write ``agent.json``. Raises if the agent already exists."""
+        raw = (agent_id or "").strip()
+        if not raw:
+            raise ValueError("agent_id is required")
+        for bad in ("/", "\\", "\x00"):
+            if bad in raw:
+                raise ValueError(f"agent_id must not contain {bad!r}")
+
+        aid = normalize_agent_id(raw)
+        if self.get(aid) is not None:
+            raise ValueError(f"agent already exists: {aid}")
+
+        agent_dir = resolve_agent_dir(aid)
+        sessions_parent = os.path.dirname(resolve_agent_sessions_file(aid))
+        resolved_workspace: str
+        if workspace_dir and str(workspace_dir).strip():
+            resolved_workspace = os.path.abspath(os.path.expanduser(str(workspace_dir).strip()))
+        else:
+            resolved_workspace = os.path.abspath(resolve_agent_workspace_dir(aid))
+
+        os.makedirs(agent_dir, exist_ok=True)
+        os.makedirs(sessions_parent, exist_ok=True)
+        os.makedirs(resolved_workspace, exist_ok=True)
+
+        llm_clean: Optional[Dict[str, Any]] = None
+        if isinstance(llm, dict) and llm:
+            allowed_map = {
+                "provider": "provider",
+                "model": "model",
+                "model_id": "model",
+                "base_url": "base_url",
+                "baseUrl": "base_url",
+                "api_key": "api_key",
+                "apiKey": "api_key",
+                "thinking_level": "thinking_level",
+                "thinkingLevel": "thinking_level",
+            }
+            tmp: Dict[str, str] = {}
+            for k, nk in allowed_map.items():
+                if k not in llm:
+                    continue
+                v = llm.get(k)
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if s:
+                    tmp[nk] = s
+            llm_clean = tmp or None
+
+        avatar_clean: Optional[str] = None
+        if avatar is not None and str(avatar).strip():
+            avatar_clean = normalize_avatar_basename(str(avatar))
+
+        now = int(time.time() * 1000)
+        cfg = AgentConfig(
+            agent_id=aid,
+            agent_dir=os.path.abspath(agent_dir),
+            workspace_dir=resolved_workspace,
+            created_at=now,
+            updated_at=now,
+            metadata={},
+            llm=llm_clean,
+            avatar=avatar_clean,
+        )
+        self.save(cfg)
+        return cfg
+
+    def set_avatar(self, agent_id: str, avatar: Optional[str] = None) -> AgentConfig:
+        """Update ``avatar`` on ``agent.json`` (basename only; empty clears)."""
+        aid = normalize_agent_id(agent_id)
+        cfg = self.get(aid)
+        if cfg is None:
+            cfg = self.get_or_create(aid)
+        raw = (avatar if avatar is not None else "").strip()
+        if not raw:
+            cfg.avatar = None
+        else:
+            cfg.avatar = normalize_avatar_basename(raw)
         self.save(cfg)
         return cfg
 

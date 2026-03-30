@@ -33,6 +33,7 @@ from ..plugin import load_plugins
 from .state import DedupeEntry, GatewayState, RunSnapshot
 from .types import AgentEvent
 from .wait_timeout import resolve_agent_wait_timeout_ms
+from .orchestrator import Orchestrator
 
 logger = get_logger(__name__)
 
@@ -66,6 +67,52 @@ def _is_safe_rel_path(path: str) -> bool:
     if any(p == ".." for p in parts):
         return False
     return True
+
+
+def _resolve_agent_workspace_file_abs(
+    *,
+    agent_manager: AgentManager,
+    agent_id: str,
+    rel_path: str,
+    prefer_existing_case_variant: bool = True,
+) -> tuple[str, str]:
+    """Resolve an allowed file under this agent's workspace dir.
+
+    Returns (normalized_rel_path, abs_path).
+
+    - Only allows a small set of root bootstrap files for the web editor UI.
+    - Optionally prefers an existing case-variant (e.g. request "memory.md" but "MEMORY.md" exists).
+    - Guards against path traversal by checking resolved path is under workspace root.
+    """
+    rel = (rel_path or "").strip().lstrip("/").replace("\\", "/")
+    allowed = {"memory.md", "MEMORY.md", "SOUL.md", "soul.md"}
+    if rel not in allowed:
+        raise ValueError(f"unsupported file: {rel!r}")
+
+    candidates = [rel]
+    if prefer_existing_case_variant:
+        if rel in {"memory.md", "MEMORY.md"}:
+            candidates = ["MEMORY.md", "memory.md"]
+        elif rel in {"SOUL.md", "soul.md"}:
+            candidates = ["SOUL.md", "soul.md"]
+
+    workspace_dir = agent_manager.get_or_create(agent_id).workspace_dir
+    root = Path(workspace_dir).resolve()
+
+    # Pick the first existing candidate; otherwise use the first candidate as default target.
+    chosen = candidates[0]
+    for c in candidates:
+        p = (root / c).resolve()
+        if root != p and root not in p.parents:
+            continue
+        if p.is_file():
+            chosen = c
+            break
+
+    target = (root / chosen).resolve()
+    if root != target and root not in target.parents:
+        raise ValueError("refusing to access path outside workspace")
+    return chosen, str(target)
 
 
 def _normalize_agent_id_for_runs(agent_id: Optional[str]) -> str:
@@ -130,6 +177,7 @@ def create_app(
     else:
         session_manager = MultiAgentSessionManager(agent_manager=agent_manager)
     runner = AgentRunner(session_manager)
+    orchestrator = Orchestrator(agent_manager=agent_manager, runner=runner)
 
     # --- Feishu：按 channels.feishu 解析出的全部账号自动注册；webhook 挂载多路由，websocket 在 lifespan 内各启一条连接 ---
     feishu_webhook_routers: List[Any] = []
@@ -501,15 +549,24 @@ def create_app(
             provided_session_id = str(params.get("sessionId") or "").strip()
             session_id = provided_session_id
             if reset_triggered or not session_id:
-                latest = None
+                # Fast-path: reuse in-memory latest session id when available.
                 try:
-                    latest = session_manager.find_latest_by_session_key(session_key, agent_id=agent_id)  # type: ignore[attr-defined]
+                    k = (str(agent_id).strip().lower() or "main", str(session_key).strip())
+                    mem_latest = state.latest_session_by_key.get(k)
                 except Exception:
-                    latest = None
-                if reset_triggered or not latest:
-                    session_id = str(uuid.uuid4())
+                    mem_latest = None
+                if (not reset_triggered) and mem_latest:
+                    session_id = str(mem_latest)
                 else:
-                    session_id = str(latest.session_id)
+                    latest = None
+                    try:
+                        latest = session_manager.find_latest_by_session_key(session_key, agent_id=agent_id)  # type: ignore[attr-defined]
+                    except Exception:
+                        latest = None
+                    if reset_triggered or not latest:
+                        session_id = str(uuid.uuid4())
+                    else:
+                        session_id = str(latest.session_id)
 
             if not message and not reset_triggered:
                 return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "message required"}}
@@ -517,6 +574,36 @@ def create_app(
             cached = state.get_dedupe(f"agent:{idem}")
             if cached:
                 return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+
+            # Ensure the chosen session exists immediately. This avoids races where we return an
+            # accepted response but the background run hasn't yet persisted the session entry.
+            try:
+                session_manager.get_or_create_session(  # type: ignore[attr-defined]
+                    session_id=session_id,
+                    session_key=session_key,
+                    agent_id=agent_id,
+                )
+            except Exception:
+                pass
+            try:
+                state.latest_session_by_key[(str(agent_id).strip().lower() or "main", str(session_key).strip())] = str(session_id)
+            except Exception:
+                pass
+
+            # If this was a pure reset (no remaining user message), create the new session entry
+            # synchronously so follow-up calls can reuse the latest session immediately.
+            if reset_triggered and not message:
+                final_payload = {
+                    "runId": None,
+                    "status": "ok",
+                    "summary": "reset",
+                    "sessionId": session_id,
+                    "reset": True,
+                }
+                state.set_dedupe(
+                    f"agent:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=final_payload)
+                )
+                return {"id": req_id, "ok": True, "payload": final_payload}
 
             run_id = str(params.get("runId") or state.new_run_id())
             state.ensure_run(run_id=run_id, session_key=session_key, agent_id=agent_id)
@@ -539,27 +626,6 @@ def create_app(
                     extra_system_prompt = (
                         f"{bootstrap}\n\n{extra}".strip() if bootstrap else (extra or None)
                     )
-                    # If this was a pure reset (no remaining user message), just create the new session entry and exit.
-                    if reset_triggered and not message:
-                        try:
-                            session_manager.get_or_create_session(  # type: ignore[attr-defined]
-                                session_id=session_id,
-                                session_key=session_key,
-                                agent_id=agent_id,
-                            )
-                        except Exception:
-                            pass
-                        final_payload = {
-                            "runId": run_id,
-                            "status": "ok",
-                            "summary": "reset",
-                            "sessionId": session_id,
-                        }
-                        state.set_dedupe(
-                            f"agent:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=final_payload)
-                        )
-                        return
-
                     result = await runner.run(
                         AgentRunParams(
                             message=message,
@@ -644,6 +710,88 @@ def create_app(
                 },
             }
 
+        if method == "agent.session.history":
+            agent_id = str(params.get("agentId") or "").strip() or "main"
+            requested = str(params.get("sessionKey") or "desktop-app").strip() or "desktop-app"
+            # Desktop UI uses sessionKey "desktop-app"; the agent RPC default when omitted is "main".
+            # Try the requested key first, then common keys, and keep the session with newest updated_at.
+            key_candidates: List[str] = []
+            for k in (requested, "desktop-app", "main"):
+                if k and k not in key_candidates:
+                    key_candidates.append(k)
+
+            def _openai_content_to_text(content: Any) -> str:
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    parts: List[str] = []
+                    for item in content:
+                        if isinstance(item, str):
+                            parts.append(item)
+                        elif isinstance(item, dict):
+                            t = item.get("text") or item.get("content")
+                            if t is not None:
+                                parts.append(str(t))
+                    return "\n".join(parts)
+                return ""
+
+            latest = None
+            for sk in key_candidates:
+                try:
+                    ent = session_manager.find_latest_by_session_key(sk, agent_id=agent_id)  # type: ignore[attr-defined]
+                except TypeError:
+                    ent = session_manager.find_latest_by_session_key(sk)
+                if not ent:
+                    continue
+                if latest is None:
+                    latest = ent
+                    continue
+                a = int(getattr(ent, "updated_at", 0) or 0)
+                b = int(getattr(latest, "updated_at", 0) or 0)
+                if a > b:
+                    latest = ent
+
+            if not latest:
+                return {"id": req_id, "ok": True, "payload": {"sessionId": None, "messages": []}}
+
+            sid = str(latest.session_id)
+            try:
+                transcript_file = session_manager.resolve_transcript_path(sid, agent_id=agent_id)  # type: ignore[attr-defined]
+            except TypeError:
+                transcript_file = session_manager.resolve_transcript_path(sid)
+
+            try:
+                from ..agents.session.transcript import build_messages_from_leaf
+
+                raw_msgs = build_messages_from_leaf(transcript_file=transcript_file, limit=500)
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": f"agent.session.history failed: {e}"},
+                }
+
+            ui_messages: List[Dict[str, Any]] = []
+            for m in raw_msgs:
+                if not isinstance(m, dict):
+                    continue
+                role = str(m.get("role") or "").strip().lower()
+                if role in ("tool",):
+                    continue
+                if role not in ("user", "assistant", "system"):
+                    continue
+                text = _openai_content_to_text(m.get("content")).strip()
+                if not text:
+                    continue
+                ui_role = "user" if role == "user" else "assistant"
+                ui_messages.append({"role": ui_role, "text": text})
+
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {"sessionId": sid, "messages": ui_messages},
+            }
+
         if method == "agents.list":
             try:
                 from ..config.paths import normalize_agent_id, resolve_agent_sessions_file
@@ -670,10 +818,392 @@ def create_app(
                         "sessionsFile": sessions_file,
                         "createdAt": cfg.created_at,
                         "updatedAt": cfg.updated_at,
+                        "avatar": cfg.avatar,
                         "runStatus": run_st,
                     }
                 )
             return {"id": req_id, "ok": True, "payload": {"agents": items}}
+
+        if method == "agents.resolve_defaults":
+            try:
+                from ..config.paths import (
+                    normalize_agent_id,
+                    resolve_agent_dir,
+                )
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            hint = str(params.get("agentId") or "").strip() or "new-agent"
+            aid = normalize_agent_id(hint)
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {
+                    "agentId": aid,
+                    "agentDir": resolve_agent_dir(aid),
+                    # UX: prefer a human-friendly "~" default shown in the UI.
+                    # The create RPC expands "~" to an absolute path.
+                    "workspaceDir": f"~/.mw4agent/agents/{aid}",
+                },
+            }
+
+        if method == "agents.create":
+            raw_id = str(params.get("agentId") or "").strip()
+            if not raw_id:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": "agentId is required"},
+                }
+            workspace_opt = str(params.get("workspaceDir") or "").strip() or None
+            llm_raw = params.get("llm")
+            llm = llm_raw if isinstance(llm_raw, dict) else None
+            avatar_opt = str(params.get("avatar") or "").strip() or None
+            try:
+                cfg = agent_manager.create_agent(
+                    raw_id,
+                    workspace_dir=workspace_opt,
+                    llm=llm,
+                    avatar=avatar_opt,
+                )
+            except ValueError as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": str(e)},
+                }
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {
+                    "agentId": cfg.agent_id,
+                    "agentDir": cfg.agent_dir,
+                    "workspaceDir": cfg.workspace_dir,
+                    "llm": cfg.llm,
+                    "avatar": cfg.avatar,
+                },
+            }
+
+        if method == "agents.set_avatar":
+            raw_id = str(params.get("agentId") or "").strip()
+            if not raw_id:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": "agentId is required"},
+                }
+            av_raw = params.get("avatar")
+            avatar_param = "" if av_raw is None else str(av_raw)
+            try:
+                cfg = agent_manager.set_avatar(raw_id, avatar=avatar_param)
+            except ValueError as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": str(e)},
+                }
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {"agentId": cfg.agent_id, "avatar": cfg.avatar},
+            }
+
+        if method == "agents.delete":
+            raw_id = str(params.get("agentId") or "").strip()
+            if not raw_id:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": "agentId is required"},
+                }
+            allow_main = bool(params.get("allowMain") is True)
+            try:
+                deleted = agent_manager.delete(raw_id, allow_main=allow_main)
+            except ValueError as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": str(e)},
+                }
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            return {"id": req_id, "ok": True, "payload": {"deleted": bool(deleted)}}
+
+        if method == "agents.workspace_file.read":
+            agent_id = str(params.get("agentId") or "").strip()
+            rel_path = str(params.get("path") or "").strip()
+            if not agent_id:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "agentId is required"}}
+            if not rel_path:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "path is required"}}
+            try:
+                resolved_rel, abs_path = _resolve_agent_workspace_file_abs(
+                    agent_manager=agent_manager,
+                    agent_id=agent_id,
+                    rel_path=rel_path,
+                    prefer_existing_case_variant=True,
+                )
+                if not os.path.isfile(abs_path):
+                    return {"id": req_id, "ok": True, "payload": {"path": resolved_rel, "text": "", "missing": True}}
+                with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                    text = f.read()
+                return {"id": req_id, "ok": True, "payload": {"path": resolved_rel, "text": text, "missing": False}}
+            except ValueError as e:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
+            except Exception as e:
+                return {"id": req_id, "ok": False, "error": {"code": "unavailable", "message": str(e)}}
+
+        if method == "agents.workspace_file.write":
+            agent_id = str(params.get("agentId") or "").strip()
+            rel_path = str(params.get("path") or "").strip()
+            text = params.get("text")
+            if not agent_id:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "agentId is required"}}
+            if not rel_path:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "path is required"}}
+            if text is None:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "text is required"}}
+            try:
+                # Prefer writing back to the already-existing case variant to avoid creating a
+                # second file (e.g. MEMORY.md vs memory.md) and unintentionally "overwriting" by divergence.
+                resolved_rel, abs_path = _resolve_agent_workspace_file_abs(
+                    agent_manager=agent_manager,
+                    agent_id=agent_id,
+                    rel_path=rel_path,
+                    prefer_existing_case_variant=True,
+                )
+                payload = str(text)
+                if len(payload) > 300_000:
+                    raise ValueError("text too large")
+                os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                with open(abs_path, "w", encoding="utf-8") as f:
+                    f.write(payload)
+                return {"id": req_id, "ok": True, "payload": {"path": resolved_rel, "saved": True}}
+            except ValueError as e:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
+            except Exception as e:
+                return {"id": req_id, "ok": False, "error": {"code": "unavailable", "message": str(e)}}
+
+        if method == "orchestrate.run":
+            message = str(params.get("message") or "").strip()
+            session_key = str(params.get("sessionKey") or "orchestrator").strip() or "orchestrator"
+            participants_raw = params.get("participants")
+            participants = (
+                [str(x) for x in participants_raw if str(x).strip()]
+                if isinstance(participants_raw, list)
+                else []
+            )
+            max_rounds = params.get("maxRounds")
+            name = str(params.get("name") or "").strip()
+            strategy = str(params.get("strategy") or "round_robin").strip() or "round_robin"
+            router_llm_raw = params.get("routerLlm")
+            router_llm = dict(router_llm_raw) if isinstance(router_llm_raw, dict) else None
+            try:
+                max_rounds_int = int(max_rounds) if isinstance(max_rounds, (int, float, str)) and str(max_rounds).strip() else 8
+            except Exception:
+                max_rounds_int = 8
+            idem = str(params.get("idempotencyKey") or "").strip()
+            if not idem:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "idempotencyKey required"}}
+            if not message:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "message required"}}
+            cached = state.get_dedupe(f"orch:{idem}")
+            if cached:
+                return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+            try:
+                st = orchestrator.create(
+                    session_key=session_key,
+                    name=name,
+                    participants=participants,
+                    max_rounds=max_rounds_int,
+                    strategy=strategy,
+                    router_llm=router_llm,
+                )
+                orchestrator.send(orch_id=st.orchId, message=message)
+            except ValueError as e:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
+            payload = {
+                "orchId": st.orchId,
+                "status": "running",
+                "sessionKey": st.sessionKey,
+            }
+            state.set_dedupe(f"orch:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=payload))
+            return {"id": req_id, "ok": True, "payload": payload}
+
+        if method == "orchestrate.create":
+            session_key = str(params.get("sessionKey") or "orchestrator").strip() or "orchestrator"
+            name = str(params.get("name") or "").strip()
+            participants_raw = params.get("participants")
+            participants = (
+                [str(x) for x in participants_raw if str(x).strip()]
+                if isinstance(participants_raw, list)
+                else []
+            )
+            max_rounds = params.get("maxRounds")
+            strategy = str(params.get("strategy") or "round_robin").strip() or "round_robin"
+            router_llm_raw = params.get("routerLlm")
+            router_llm = dict(router_llm_raw) if isinstance(router_llm_raw, dict) else None
+            try:
+                max_rounds_int = int(max_rounds) if isinstance(max_rounds, (int, float, str)) and str(max_rounds).strip() else 8
+            except Exception:
+                max_rounds_int = 8
+            idem = str(params.get("idempotencyKey") or "").strip()
+            if not idem:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "idempotencyKey required"}}
+            cached = state.get_dedupe(f"orch:create:{idem}")
+            if cached:
+                return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+            try:
+                st = orchestrator.create(
+                    session_key=session_key,
+                    name=name,
+                    participants=participants,
+                    max_rounds=max_rounds_int,
+                    strategy=strategy,
+                    router_llm=router_llm,
+                )
+            except ValueError as e:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
+            payload = {"orchId": st.orchId, "status": st.status, "sessionKey": st.sessionKey}
+            state.set_dedupe(f"orch:create:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=payload))
+            return {"id": req_id, "ok": True, "payload": payload}
+
+        if method == "orchestrate.list":
+            items = []
+            for st in orchestrator.list():
+                items.append(
+                    {
+                        "orchId": st.orchId,
+                        "name": st.name,
+                        "status": st.status,
+                        "sessionKey": st.sessionKey,
+                        "strategy": st.strategy,
+                        "maxRounds": st.maxRounds,
+                        "participants": st.participants,
+                        "currentRound": st.currentRound,
+                        "createdAt": st.createdAt,
+                        "updatedAt": st.updatedAt,
+                        "error": st.error,
+                    }
+                )
+            return {"id": req_id, "ok": True, "payload": {"orchestrations": items}}
+
+        if method == "orchestrate.delete":
+            orch_id = str(params.get("orchId") or "").strip()
+            if not orch_id:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "orchId is required"}}
+            try:
+                deleted = orchestrator.delete(orch_id)
+            except ValueError as e:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
+            except Exception as e:
+                return {"id": req_id, "ok": False, "error": {"code": "unavailable", "message": str(e)}}
+            return {"id": req_id, "ok": True, "payload": {"deleted": bool(deleted)}}
+
+        if method == "orchestrate.get":
+            orch_id = str(params.get("orchId") or "").strip()
+            if not orch_id:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "orchId is required"}}
+            st = orchestrator.get(orch_id)
+            if not st:
+                return {"id": req_id, "ok": False, "error": {"code": "not_found", "message": "orchestration not found"}}
+            payload = {
+                "orchId": st.orchId,
+                "sessionKey": st.sessionKey,
+                "status": st.status,
+                "strategy": st.strategy,
+                "maxRounds": st.maxRounds,
+                "currentRound": st.currentRound,
+                "participants": st.participants,
+                "messages": [asdict(m) for m in st.messages],
+                "error": st.error,
+                "createdAt": st.createdAt,
+                "updatedAt": st.updatedAt,
+            }
+            return {"id": req_id, "ok": True, "payload": payload}
+
+        if method == "orchestrate.send":
+            orch_id = str(params.get("orchId") or "").strip()
+            message = str(params.get("message") or "").strip()
+            idem = str(params.get("idempotencyKey") or "").strip()
+            if not orch_id:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "orchId is required"}}
+            if not idem:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "idempotencyKey required"}}
+            cached = state.get_dedupe(f"orch:send:{orch_id}:{idem}")
+            if cached:
+                return {"id": req_id, "ok": cached.ok, "payload": cached.payload, "error": cached.error}
+            try:
+                st = orchestrator.send(orch_id=orch_id, message=message)
+            except ValueError as e:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
+            payload = {"orchId": st.orchId, "status": st.status, "currentRound": st.currentRound}
+            state.set_dedupe(
+                f"orch:send:{orch_id}:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=payload)
+            )
+            return {"id": req_id, "ok": True, "payload": payload}
+
+        if method == "orchestrate.wait":
+            orch_id = str(params.get("orchId") or "").strip()
+            if not orch_id:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "orchId is required"}}
+            timeout_ms = params.get("timeoutMs")
+            try:
+                timeout_ms_int = int(timeout_ms) if isinstance(timeout_ms, (int, float, str)) and str(timeout_ms).strip() else 15_000
+            except Exception:
+                timeout_ms_int = 15_000
+            timeout_ms_int = max(0, min(120_000, timeout_ms_int))
+            deadline = _now_ms() + timeout_ms_int
+            while _now_ms() < deadline:
+                st = orchestrator.get(orch_id)
+                if not st:
+                    return {"id": req_id, "ok": False, "error": {"code": "not_found", "message": "orchestration not found"}}
+                if st.status not in {"accepted", "running"}:
+                    break
+                await asyncio.sleep(0.4)
+            st = orchestrator.get(orch_id)
+            if not st:
+                return {"id": req_id, "ok": False, "error": {"code": "not_found", "message": "orchestration not found"}}
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {
+                    "orchId": st.orchId,
+                    "status": st.status,
+                    "currentRound": st.currentRound,
+                },
+            }
+
+        if method == "llm.providers.list":
+            try:
+                from ..llm.backends import list_providers
+            except Exception as e:
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"code": "unavailable", "message": str(e)},
+                }
+            provs = ["echo", *list(list_providers())]
+            return {"id": req_id, "ok": True, "payload": {"providers": provs}}
 
         if method == "skills.list":
             try:
@@ -811,8 +1341,6 @@ def create_app(
             return {"id": req_id, "ok": True, "payload": {"section": section, "ok": True}}
 
         if method == "ls":
-            import os
-
             raw_path = params.get("path")
             path = str(raw_path) if isinstance(raw_path, (str, bytes)) else "."
             if isinstance(raw_path, bytes):
