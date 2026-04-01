@@ -221,6 +221,11 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
   const [supervisorThinking, setSupervisorThinking] = useState("");
   const [createSupervisorMaxIter, setCreateSupervisorMaxIter] = useState("5");
   const [createSupervisorLlmMaxRetries, setCreateSupervisorLlmMaxRetries] = useState("12");
+  const [routerLlmTestLoading, setRouterLlmTestLoading] = useState(false);
+  const [routerLlmTestBanner, setRouterLlmTestBanner] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
   const [supervisorLlmTestLoading, setSupervisorLlmTestLoading] = useState(false);
   const [supervisorLlmTestBanner, setSupervisorLlmTestBanner] = useState<{
     ok: boolean;
@@ -593,10 +598,38 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
     setSupervisorThinking("");
     setCreateSupervisorMaxIter("5");
     setCreateSupervisorLlmMaxRetries("12");
+    setRouterLlmTestBanner(null);
+    setRouterLlmTestLoading(false);
     setSupervisorLlmTestBanner(null);
     setSupervisorLlmTestLoading(false);
     setOrchFormOpen(true);
   }, []);
+
+  const runRouterLlmTest = useCallback(async () => {
+    setRouterLlmTestLoading(true);
+    setRouterLlmTestBanner(null);
+    const llm: Record<string, string> = {};
+    if (routerProvider.trim()) llm.provider = routerProvider.trim();
+    if (routerModel.trim()) llm.model = routerModel.trim();
+    if (routerBaseUrl.trim()) llm.base_url = routerBaseUrl.trim();
+    if (routerApiKey.trim()) llm.api_key = routerApiKey.trim();
+    if (routerThinking.trim()) llm.thinking_level = routerThinking.trim();
+    const r = await testLlmConnection({ llm });
+    setRouterLlmTestLoading(false);
+    if (!r.ok) {
+      setRouterLlmTestBanner({ ok: false, text: r.error || t("agentsError") });
+      return;
+    }
+    const detail = r.preview ? `${r.message} · ${r.preview}` : r.message;
+    setRouterLlmTestBanner({ ok: r.success, text: detail });
+  }, [
+    routerApiKey,
+    routerBaseUrl,
+    routerModel,
+    routerProvider,
+    routerThinking,
+    t,
+  ]);
 
   const runSupervisorLlmTest = useCallback(async () => {
     setSupervisorLlmTestLoading(true);
@@ -631,6 +664,8 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
         return;
       }
       setError(null);
+      setRouterLlmTestBanner(null);
+      setRouterLlmTestLoading(false);
       setSupervisorLlmTestBanner(null);
       setSupervisorLlmTestLoading(false);
       const r = await orchestrateGet(o.orchId);
@@ -1546,6 +1581,34 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                       placeholder="off | low | medium | high"
                     />
                   </label>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      title={t("agentsLlmTestTooltip")}
+                      aria-label={t("agentsLlmTestTooltip")}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--panel)] text-xs hover:opacity-90 disabled:opacity-50"
+                      disabled={routerLlmTestLoading}
+                      onClick={() => void runRouterLlmTest()}
+                    >
+                      <Image
+                        src="/icons/test.png"
+                        alt=""
+                        width={16}
+                        height={16}
+                        className="h-4 w-4 object-contain"
+                      />
+                      {t("agentsLlmTest")}
+                    </button>
+                    {routerLlmTestBanner ? (
+                      <span
+                        className={`text-[11px] ${
+                          routerLlmTestBanner.ok ? "text-emerald-500/90" : "text-red-500/90"
+                        }`}
+                      >
+                        {routerLlmTestBanner.text}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

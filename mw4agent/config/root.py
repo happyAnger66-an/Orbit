@@ -20,7 +20,15 @@ def get_root_config_dir() -> Path:
     env_dir = os.environ.get("MW4AGENT_CONFIG_DIR")
     if env_dir:
         return Path(env_dir)
-    return Path.home() / ".mw4agent"
+    # Back-compat: older code and docs sometimes used ~/.mw4agent/config/ as the root config dir.
+    # If the new default (~/.mw4agent/mw4agent.json) doesn't exist but the legacy path does,
+    # prefer the legacy directory so users don't experience "config lost after restart".
+    home = Path.home()
+    new_dir = home / ".mw4agent"
+    legacy_dir = home / ".mw4agent" / "config"
+    if not (new_dir / ROOT_CONFIG_FILENAME).exists() and (legacy_dir / ROOT_CONFIG_FILENAME).exists():
+        return legacy_dir
+    return new_dir
 
 
 def _get_root_config_manager() -> ConfigManager:
