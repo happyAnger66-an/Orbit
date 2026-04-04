@@ -1,6 +1,6 @@
-# MW4Agent Webhook 通道架构与实现
+# Orbit Webhook 通道架构与实现
 
-本文档说明 MW4Agent 中通用 Webhook 通道的架构设计与实现方式，目标是为各种后端/第三方系统提供一个简单、统一的 HTTP 入站接入点。
+本文档说明 Orbit 中通用 Webhook 通道的架构设计与实现方式，目标是为各种后端/第三方系统提供一个简单、统一的 HTTP 入站接入点。
 
 ## 1. 目标与能力边界
 
@@ -17,7 +17,7 @@
 ## 2. 文件与依赖
 
 - 代码文件：
-  - `mw4agent/channels/plugins/webhook.py`
+  - `orbit/channels/plugins/webhook.py`
 - 依赖：
   - 复用项目中已有的：
     - `fastapi`
@@ -41,7 +41,7 @@ OutboundPayload  →  WebhookChannel.deliver() → stdout
 
 ### 3.1 ChannelPlugin：`WebhookChannel`
 
-文件：`mw4agent/channels/plugins/webhook.py`
+文件：`orbit/channels/plugins/webhook.py`
 
 - 继承自 `ChannelPlugin`，定义：
   - `id = "webhook"`
@@ -131,13 +131,13 @@ async def deliver(self, payload: OutboundPayload) -> None:
 
 ## 5. CLI 接入方式
 
-文件：`mw4agent/cli/channels/register.py`
+文件：`orbit/cli/channels/register.py`
 
 - 命令层级：
 
 ```bash
-mw4agent channels webhook run \
-  --session-file mw4agent.sessions.json \
+orbit channels webhook run \
+  --session-file orbit.sessions.json \
   --host 0.0.0.0 \
   --port 8080 \
   --path /webhook

@@ -1,6 +1,6 @@
 # OpenClaw Dashboard / Control UI 前端实现框架与原理
 
-本文基于 `openclaw` 仓库源码与官方文档，对 **Gateway Dashboard（Control UI）** 的前端实现做一次整体梳理，方便在 MW4Agent 中对标实现类似的 Web 控制台。
+本文基于 `openclaw` 仓库源码与官方文档，对 **Gateway Dashboard（Control UI）** 的前端实现做一次整体梳理，方便在 Orbit 中对标实现类似的 Web 控制台。
 
 ---
 
@@ -262,9 +262,9 @@ Dashboard 支持使用 Vite dev server 连接远程 Gateway，便于：
 
 ---
 
-## 7. 对 MW4Agent 的设计启示
+## 7. 对 Orbit 的设计启示
 
-从 OpenClaw Dashboard 的实现可以提炼出一些对 MW4Agent 有参考价值的点：
+从 OpenClaw Dashboard 的实现可以提炼出一些对 Orbit 有参考价值的点：
 
 - **前后端边界清晰**：
   - 所有管理能力都通过统一的 WebSocket RPC 暴露；
@@ -279,11 +279,11 @@ Dashboard 支持使用 Vite dev server 连接远程 Gateway，便于：
   - 所有功能面板都基于一套统一的事件/命令总线（`chat.*`、`config.*`、`skills.*` 等）；
   - 为未来扩展新模块（如 Memory 可视化、LLM 监控）提供良好基础。
 
-在 MW4Agent 中实现 Dashboard 时，可以对标：
+在 Orbit 中实现 Dashboard 时，可以对标：
 
 - 使用 Vite +（React/Lit/Vue 任一）构建一个轻量 SPA；
 - 由 Python Gateway 提供：
-  - 静态文件目录（例如 `dist/mw4agent-dashboard`）；
+  - 静态文件目录（例如 `dist/orbit-dashboard`）；
   - 单一 WebSocket 端点（统一 RPC 协议）；
 - 前端复用 OpenClaw 思路：
   - URL fragment 注入 token；

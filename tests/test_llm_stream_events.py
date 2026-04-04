@@ -5,18 +5,18 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.types import AgentRunParams, StreamEvent
-from mw4agent.agents.tools.base import ToolResult
-from mw4agent.channels import feishu_llm_stream as feishu_llm_mod
-from mw4agent.channels.feishu_llm_stream import (
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.types import AgentRunParams, StreamEvent
+from orbit.agents.tools.base import ToolResult
+from orbit.channels import feishu_llm_stream as feishu_llm_mod
+from orbit.channels.feishu_llm_stream import (
     FEISHU_LLM_STREAM_META_KEY,
     format_llm_stream_event_for_feishu,
     feishu_session_effective_llm_stream,
     parse_feishu_thinking_command,
 )
-from mw4agent.llm import LLMUsage
+from orbit.llm import LLMUsage
 
 
 def test_parse_feishu_thinking_command() -> None:
@@ -61,7 +61,7 @@ def test_format_llm_stream_event_includes_thinking() -> None:
 
 @pytest.mark.asyncio
 async def test_runner_emits_llm_stream_on_tool_loop_round(tmp_path: Path, monkeypatch) -> None:
-    import mw4agent.agents.runner.runner as runner_mod
+    import orbit.agents.runner.runner as runner_mod
 
     monkeypatch.setattr(runner_mod, "MAX_TOOL_ROUNDS", 2)
     calls: dict[str, int] = {"n": 0}
@@ -108,7 +108,7 @@ async def test_runner_emits_llm_stream_on_tool_loop_round(tmp_path: Path, monkey
 
 @pytest.mark.asyncio
 async def test_runner_single_turn_strips_thinking_from_payload(tmp_path: Path, monkeypatch) -> None:
-    import mw4agent.agents.runner.runner as runner_mod
+    import orbit.agents.runner.runner as runner_mod
 
     monkeypatch.setattr(
         runner_mod,

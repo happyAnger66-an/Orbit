@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.agent_manager import AgentManager
+from orbit.agents.agent_manager import AgentManager
 
 
 def test_create_agent_writes_config_and_custom_workspace(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw_state"))
-    monkeypatch.delenv("MW4AGENT_WORKSPACE_DIR", raising=False)
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw_state"))
+    monkeypatch.delenv("ORBIT_WORKSPACE_DIR", raising=False)
 
     am = AgentManager()
     ws = tmp_path / "custom_ws"
@@ -33,16 +33,16 @@ def test_create_agent_writes_config_and_custom_workspace(tmp_path: Path, monkeyp
 
 
 def test_create_agent_rejects_invalid_id(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw_state2"))
-    monkeypatch.delenv("MW4AGENT_WORKSPACE_DIR", raising=False)
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw_state2"))
+    monkeypatch.delenv("ORBIT_WORKSPACE_DIR", raising=False)
     am = AgentManager()
     with pytest.raises(ValueError, match="must not contain"):
         am.create_agent("bad/id")
 
 
 def test_create_agent_persists_avatar(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw_state_av"))
-    monkeypatch.delenv("MW4AGENT_WORKSPACE_DIR", raising=False)
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw_state_av"))
+    monkeypatch.delenv("ORBIT_WORKSPACE_DIR", raising=False)
     am = AgentManager()
     cfg = am.create_agent("av_test", avatar="icon-a-124.png")
     assert cfg.avatar == "icon-a-124.png"
@@ -52,16 +52,16 @@ def test_create_agent_persists_avatar(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_create_agent_rejects_avatar_path(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw_state_av2"))
-    monkeypatch.delenv("MW4AGENT_WORKSPACE_DIR", raising=False)
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw_state_av2"))
+    monkeypatch.delenv("ORBIT_WORKSPACE_DIR", raising=False)
     am = AgentManager()
     with pytest.raises(ValueError, match="path"):
         am.create_agent("av_bad", avatar="../../etc/passwd")
 
 
 def test_set_avatar_updates_and_clears(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw_state_sa"))
-    monkeypatch.delenv("MW4AGENT_WORKSPACE_DIR", raising=False)
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw_state_sa"))
+    monkeypatch.delenv("ORBIT_WORKSPACE_DIR", raising=False)
     am = AgentManager()
     am.create_agent("sa1", avatar="花生.png")
     u = am.set_avatar("sa1", avatar="牛人.png")

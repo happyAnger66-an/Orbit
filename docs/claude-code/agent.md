@@ -1,6 +1,6 @@
 # Claude Code 功能与架构分析
 
-本文档基于 [anthropics/claude-code](https://github.com/anthropics/claude-code) 仓库，对 Claude Code 的定位、功能与插件架构做归纳，供 MW4Agent 等智能体/网关项目参考。
+本文档基于 [anthropics/claude-code](https://github.com/anthropics/claude-code) 仓库，对 Claude Code 的定位、功能与插件架构做归纳，供 Orbit 等智能体/网关项目参考。
 
 ---
 
@@ -137,9 +137,9 @@ plugin-name/
 
 ---
 
-## 4. 与 MW4Agent 的对照（简要）
+## 4. 与 Orbit 的对照（简要）
 
-| 维度 | Claude Code | MW4Agent |
+| 维度 | Claude Code | Orbit |
 |------|-------------|----------|
 | 定位 | 面向开发者的编码 Agent（终端/IDE/GitHub） | 面向网关与多通道的 Agent 运行与编排 |
 | 扩展方式 | 插件（commands / agents / skills / hooks / MCP） | 内置 tools（read/write/gateway）、skills、通道、LLM 配置 |
@@ -147,7 +147,7 @@ plugin-name/
 | 事件/钩子 | 会话与工具前后等多阶段 Hook | 事件流（lifecycle/assistant/tool）经 Gateway 广播 |
 | 多 Agent | 主 Agent + 子 Agent（agents/*.md） | 单 Runner，可扩展为多 Agent 编排 |
 
-Claude Code 的插件架构（清单、命令、专用 Agent、按描述激活的 Skill、事件钩子）对 MW4Agent 的“技能/工具/会话策略”设计有参考价值；MW4Agent 侧重服务端网关与多端接入，与 Claude Code 的“本机/IDE 编码助手”场景互补。
+Claude Code 的插件架构（清单、命令、专用 Agent、按描述激活的 Skill、事件钩子）对 Orbit 的“技能/工具/会话策略”设计有参考价值；Orbit 侧重服务端网关与多端接入，与 Claude Code 的“本机/IDE 编码助手”场景互补。
 
 ---
 

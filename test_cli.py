@@ -1,17 +1,17 @@
 """Test script for CLI"""
 
 import sys
-from mw4agent.cli import main
+from orbit.cli import main
 
 if __name__ == "__main__":
     # Test various commands
     test_cases = [
-        ["mw4agent", "--help"],
-        ["mw4agent", "--version"],
-        ["mw4agent", "gateway", "--help"],
-        ["mw4agent", "gateway", "status"],
-        ["mw4agent", "gateway", "call", "health"],
-        ["mw4agent", "gateway", "discover"],
+        ["orbit", "--help"],
+        ["orbit", "--version"],
+        ["orbit", "gateway", "--help"],
+        ["orbit", "gateway", "status"],
+        ["orbit", "gateway", "call", "health"],
+        ["orbit", "gateway", "discover"],
     ]
     
     if len(sys.argv) > 1:

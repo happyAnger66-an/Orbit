@@ -1,14 +1,14 @@
-# MW4Agent 极简 Tool-Call 协议设计与示例
+# Orbit 极简 Tool-Call 协议设计与示例
 
 本文档说明当前在 `AgentRunner` 中实现的极简 tool-call 协议格式，以及如何编写测试示例验证该协议。
 
 ## 1. 协议所在位置
 
-- 实现位置：`mw4agent/agents/runner/runner.py` 中的 `_execute_agent_turn(...)`。
+- 实现位置：`orbit/agents/runner/runner.py` 中的 `_execute_agent_turn(...)`。
 - 工具执行复用现有：
-  - `ToolRegistry`（`mw4agent/agents/tools/registry.py`）
-  - `AgentTool` 抽象（`mw4agent/agents/tools/base.py`）
-  - 示例工具：`GatewayLsTool`（`mw4agent/agents/tools/gateway_tool.py`）
+  - `ToolRegistry`（`orbit/agents/tools/registry.py`）
+  - `AgentTool` 抽象（`orbit/agents/tools/base.py`）
+  - 示例工具：`GatewayLsTool`（`orbit/agents/tools/gateway_tool.py`）
 
 当 `AgentRunParams.message` 是特定 JSON 结构时，`_execute_agent_turn` 会先执行工具，再将工具结果拼入新 prompt 调用 LLM；否则按普通单轮 LLM 调用处理。
 
@@ -125,7 +125,7 @@
 ### 4.1 准备：注册工具
 
 ```python
-from mw4agent.agents.tools import get_tool_registry, GatewayLsTool
+from orbit.agents.tools import get_tool_registry, GatewayLsTool
 
 reg = get_tool_registry()
 reg.register(GatewayLsTool())
@@ -140,10 +140,10 @@ reg.register(GatewayLsTool())
 import asyncio
 import json
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.types import AgentRunParams
-from mw4agent.agents.tools import get_tool_registry, GatewayLsTool
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.types import AgentRunParams
+from orbit.agents.tools import get_tool_registry, GatewayLsTool
 
 # 1. 注册工具
 reg = get_tool_registry()
@@ -152,7 +152,7 @@ reg.register(GatewayLsTool())
 
 async def main() -> None:
     # 2. 创建 SessionManager 和 AgentRunner
-    session_manager = SessionManager("/tmp/mw4agent.toolcall.sessions.json")
+    session_manager = SessionManager("/tmp/orbit.toolcall.sessions.json")
     runner = AgentRunner(session_manager)
 
     # 3. 构造 tool-call 协议的 message JSON
@@ -197,7 +197,7 @@ Tool gateway_ls failed with error: 'HTTP Error 404: Not Found'
 - 支持一次消息中多次 tool calls 的简单序列；
 - 将工具 schema（`ToolRegistry.get_tool_definitions()`）注入到系统 prompt 中，进一步对齐 OpenClaw 的工具调用体验。 
 
-# MW4Agent 极简 Tool-Call 协议说明
+# Orbit 极简 Tool-Call 协议说明
 
 本文档记录当前在 `AgentRunner` 中实现的极简 tool-call 协议格式，以及一个直接使用 `AgentRunner` 的测试示例，方便对照 OpenClaw 的 `runEmbeddedAttempt` / 工具循环逻辑进行演进。
 
@@ -236,7 +236,7 @@ Tool gateway_ls failed with error: 'HTTP Error 404: Not Found'
 
 ## 2. 执行流程（Runner 视角）
 
-协议由 `mw4agent/agents/runner/runner.py` 中的 `_execute_agent_turn` 解释执行，关键步骤如下：
+协议由 `orbit/agents/runner/runner.py` 中的 `_execute_agent_turn` 解释执行，关键步骤如下：
 
 1. **解析 message 是否为 tool-call 计划**
 
@@ -308,10 +308,10 @@ Tool gateway_ls failed with error: 'HTTP Error 404: Not Found'
 import asyncio
 import json
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.types import AgentRunParams
-from mw4agent.agents.tools import get_tool_registry, GatewayLsTool
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.types import AgentRunParams
+from orbit.agents.tools import get_tool_registry, GatewayLsTool
 
 # 1. 在全局 ToolRegistry 注册 gateway_ls 工具
 reg = get_tool_registry()
@@ -320,7 +320,7 @@ reg.register(GatewayLsTool())
 
 async def main() -> None:
     # 2. 构造 AgentRunner 与 SessionManager
-    session_manager = SessionManager("/tmp/mw4agent.toolcall.sessions.json")
+    session_manager = SessionManager("/tmp/orbit.toolcall.sessions.json")
     runner = AgentRunner(session_manager)
 
     # 3. 构造 tool-call 协议的 message
@@ -344,12 +344,12 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-在默认 echo LLM 后端配置下（`MW4AGENT_LLM_PROVIDER` 未设置或为 `echo`）：
+在默认 echo LLM 后端配置下（`ORBIT_LLM_PROVIDER` 未设置或为 `echo`）：
 
 - 工具调用部分会真实执行 `gateway_ls`（通过 Gateway RPC 的 `ls` 方法）；
 - LLM 部分会对拼接后的 prompt 做简单 echo，便于观察最终组合后的文本结构。
 
-当启用真实 OpenAI 后端（`MW4AGENT_LLM_PROVIDER=openai` 且设置了 `OPENAI_API_KEY`）时，第二阶段的回答将由 OpenAI Chat API 生成，但工具调用协议本身保持不变。
+当启用真实 OpenAI 后端（`ORBIT_LLM_PROVIDER=openai` 且设置了 `OPENAI_API_KEY`）时，第二阶段的回答将由 OpenAI Chat API 生成，但工具调用协议本身保持不变。
 
 ---
 
@@ -361,7 +361,7 @@ asyncio.run(main())
 - 多轮工具调用循环（工具结果 → 再让 LLM 决策下一步）。
 - 对工具调用和结果的更细粒度流式事件与权限校验。
 
-MW4Agent 后续可以在本协议基础上迭代：
+Orbit 后续可以在本协议基础上迭代：
 
 - 在 LLM 前增加一个“planner”步骤，让 LLM 输出上述 JSON 结构，然后复用当前执行分支；
 - 引入多轮 attempt 与工具循环，逐步向 OpenClaw 的 `runEmbeddedAttempt` 靠拢。 

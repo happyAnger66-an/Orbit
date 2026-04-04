@@ -1,6 +1,6 @@
-## MW4Agent 多 Agent 管理（对齐 OpenClaw）
+## Orbit 多 Agent 管理（对齐 OpenClaw）
 
-本文说明 mw4agent 当前的多 agent 目录结构、CLI 用法，以及从旧版单文件 session store（`mw4agent.sessions.json`）迁移到 per-agent session store 的逻辑与约定。
+本文说明 orbit 当前的多 agent 目录结构、CLI 用法，以及从旧版单文件 session store（`orbit.sessions.json`）迁移到 per-agent session store 的逻辑与约定。
 
 ---
 
@@ -10,7 +10,7 @@
 - **每个 agent 独立状态目录**：`agent_dir`
 - **每个 agent 独立 workspace**：`workspace_dir`（供 read/write 等工具使用）
 - **每个 agent 独立 session store**：`sessions/sessions.json`
-- **可选：每个 agent 独立 LLM 配置**：`agent.json` 内 `llm` 对象，覆盖根配置 `mw4agent.json` 的 `llm` 段（见下文）
+- **可选：每个 agent 独立 LLM 配置**：`agent.json` 内 `llm` 对象，覆盖根配置 `orbit.json` 的 `llm` 段（见下文）
 - **迁移要安全/幂等**：旧 store 不删除，迁移成功后会创建备份
 
 ---
@@ -19,12 +19,12 @@
 
 默认 state 目录：
 
-- `~/.mw4agent`（可用 `MW4AGENT_STATE_DIR` 覆盖）
+- `~/orbit`（可用 `ORBIT_STATE_DIR` 覆盖）
 
 每个 agent 的目录结构：
 
 ```
-~/.mw4agent/
+~/orbit/
   agents/
     <agentId>/
       agent.json
@@ -49,21 +49,21 @@
 }
 ```
 
-**解析优先级**（每个字段独立取第一个非空值）：`AgentRunParams` 显式字段 → 当前 agent 的 `llm` → 根 `mw4agent.json` 的 `llm` → 环境变量 `MW4AGENT_LLM_*`。实现见 `mw4agent/llm/backends.py` 中 `_resolve_llm_settings`。
+**解析优先级**（每个字段独立取第一个非空值）：`AgentRunParams` 显式字段 → 当前 agent 的 `llm` → 根 `orbit.json` 的 `llm` → 环境变量 `ORBIT_LLM_*`。实现见 `orbit/llm/backends.py` 中 `_resolve_llm_settings`。
 
 CLI：
 
 ```bash
-mw4agent agent set-llm coders --provider deepseek --model-id deepseek-chat
-mw4agent agent show coders   # llm.api_key 显示为 ********
-mw4agent agent set-llm coders --clear   # 去掉 per-agent 覆盖
+orbit agent set-llm coders --provider deepseek --model-id deepseek-chat
+orbit agent show coders   # llm.api_key 显示为 ********
+orbit agent set-llm coders --clear   # 去掉 per-agent 覆盖
 ```
 
 关键实现位置：
 
-- `mw4agent/config/paths.py`
-- `mw4agent/agents/agent_manager.py`
-- `mw4agent/llm/backends.py`
+- `orbit/config/paths.py`
+- `orbit/agents/agent_manager.py`
+- `orbit/llm/backends.py`
 
 ---
 
@@ -72,27 +72,27 @@ mw4agent agent set-llm coders --clear   # 去掉 per-agent 覆盖
 ### 3.1 创建与查看 agent
 
 - 创建：
-  - `mw4agent agent create <agent_id> [--agent-dir ...] [--workspace-dir ...]`
+  - `orbit agent create <agent_id> [--agent-dir ...] [--workspace-dir ...]`
 - 列表：
-  - `mw4agent agent list`
+  - `orbit agent list`
 - 查看：
-  - `mw4agent agent show [agent_id]`（默认 main）
+  - `orbit agent show [agent_id]`（默认 main）
 - 删除：
-  - `mw4agent agent del <agent_id>`：删除 `~/.mw4agent/agents/<agentId>/` 整目录（含 `agent.json`、`sessions/`、`workspace/` 等）。
+  - `orbit agent del <agent_id>`：删除 `~/orbit/agents/<agentId>/` 整目录（含 `agent.json`、`sessions/`、`workspace/` 等）。
   - 默认**禁止**删除默认 agent `main`；若确需删除，可加 `--force`（危险操作）。
   - 若目录不存在，命令以非零退出码结束并输出 JSON 错误。
 
-实现：`mw4agent/cli/agent/register.py`、`mw4agent/agents/agent_manager.py`（`AgentManager.delete`）
+实现：`orbit/cli/agent/register.py`、`orbit/agents/agent_manager.py`（`AgentManager.delete`）
 
 ### 3.2 运行（指定 agent）
 
 通过 Gateway RPC 运行时，传入 `agentId` 即可路由到该 agent 的 workspace 与 session store。
 
-- `mw4agent agent run --agent-id <agentId> -m "..." ...`
+- `orbit agent run --agent-id <agentId> -m "..." ...`
 
 Channels 运行也支持 `--agent-id`（multi-agent 模式）：
 
-- `mw4agent channels console run --agent-id <agentId>`
+- `orbit channels console run --agent-id <agentId>`
 
 ---
 
@@ -100,26 +100,26 @@ Channels 运行也支持 `--agent-id`（multi-agent 模式）：
 
 ### 4.1 背景
 
-旧版 mw4agent 常用单文件 session store：
+旧版 orbit 常用单文件 session store：
 
-- `./mw4agent.sessions.json`（项目目录内）
+- `./orbit.sessions.json`（项目目录内）
 
 新版本对齐为 per-agent：
 
-- `~/.mw4agent/agents/<agentId>/sessions/sessions.json`
+- `~/orbit/agents/<agentId>/sessions/sessions.json`
 
 ### 4.2 自动迁移触发点
 
 当使用 multi-agent session manager（`MultiAgentSessionManager`）时，会在初始化阶段尝试 **best-effort 自动迁移**（仅 main）：
 
-- 实现：`mw4agent/agents/session/migrate.py` + `mw4agent/agents/session/multi_manager.py`
+- 实现：`orbit/agents/session/migrate.py` + `orbit/agents/session/multi_manager.py`
 
 ### 4.3 迁移来源路径（候选）
 
 自动迁移会尝试以下路径（按顺序）：
 
-1) `./mw4agent.sessions.json`
-2) `~/.mw4agent/mw4agent.sessions.json`（state root legacy）
+1) `./orbit.sessions.json`
+2) `~/orbit/orbit.sessions.json`（state root legacy）
 
 ### 4.4 合并策略与备份
 
@@ -128,7 +128,7 @@ Channels 运行也支持 `--agent-id`（multi-agent 模式）：
 - 将旧 store 内的 sessions 合并写入目标 `sessions.json`
 - 若 session_id 冲突：保留较新的 `updated_at`、更大的 `message_count/total_tokens`，metadata 合并
 - 迁移成功后，会在旧文件旁创建备份：
-  - `mw4agent.sessions.json.bak.<timestamp>`
+  - `orbit.sessions.json.bak.<timestamp>`
 
 ### 4.5 幂等性
 
@@ -144,12 +144,12 @@ Channels 运行也支持 `--agent-id`（multi-agent 模式）：
 ## 5. 实现文件索引
 
 - Agent 管理：
-  - `mw4agent/agents/agent_manager.py`
-  - `mw4agent/config/paths.py`
+  - `orbit/agents/agent_manager.py`
+  - `orbit/config/paths.py`
 - Per-agent sessions：
-  - `mw4agent/agents/session/multi_manager.py`
-  - `mw4agent/agents/session/migrate.py`
+  - `orbit/agents/session/multi_manager.py`
+  - `orbit/agents/session/migrate.py`
 - Gateway/Channels 路由到 per-agent workspace：
-  - `mw4agent/gateway/server.py`
-  - `mw4agent/cli/channels/register.py`
+  - `orbit/gateway/server.py`
+  - `orbit/cli/channels/register.py`
 

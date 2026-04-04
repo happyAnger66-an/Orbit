@@ -1,4 +1,4 @@
-# MW4Agent 插件使用与配置
+# Orbit 插件使用与配置
 
 本文说明如何通过**插件**扩展 Agent 的工具与技能：插件目录结构、清单格式、配置项及安全注意点。设计与实现细节见 [插件机制设计](./plugin-mechanism.md)。
 
@@ -44,7 +44,7 @@ my-plugin/
 | **tools_module** | 否 | 相对插件根的 Python 模块名，该模块需提供 `register_tools(registry)` 或 `register(registry)` |
 | **skills_dir** | 否 | 相对插件根的目录，其下为技能文件（同上约定） |
 
-插件加载时，会设置环境变量 **`MW4AGENT_PLUGIN_ROOT`** 为插件根目录，便于模块内引用资源路径。
+插件加载时，会设置环境变量 **`ORBIT_PLUGIN_ROOT`** 为插件根目录，便于模块内引用资源路径。
 
 ---
 
@@ -58,8 +58,8 @@ my-plugin/
 若 `registry` 为 `None`，应使用 `get_tool_registry()`。示例：
 
 ```python
-from mw4agent.agents.tools import get_tool_registry
-from mw4agent.agents.tools.base import AgentTool, ToolResult
+from orbit.agents.tools import get_tool_registry
+from orbit.agents.tools.base import AgentTool, ToolResult
 
 class EchoTool(AgentTool):
     def __init__(self):
@@ -78,13 +78,13 @@ def register_tools(registry=None):
 
 ## 4. 配置项
 
-插件发现与启用由**环境变量**或**根配置**控制。根配置文件路径：**`~/.mw4agent/mw4agent.json`**（可通过环境变量 `MW4AGENT_CONFIG_DIR` 改变目录）。
+插件发现与启用由**环境变量**或**根配置**控制。根配置文件路径：**`~/orbit/orbit.json`**（可通过环境变量 `ORBIT_CONFIG_DIR` 改变目录）。
 
 ### 4.1 插件目录（plugin_dirs）
 
-- **环境变量**：`MW4AGENT_PLUGIN_DIR`，多个路径用 `:` 或 `,` 分隔。  
-  例：`export MW4AGENT_PLUGIN_DIR=/path/to/plugin1:/path/to/parent_of_plugins`
-- **配置文件**：在 `~/.mw4agent/mw4agent.json` 中增加 `plugins` 段，使用 `plugin_dirs` 列表：
+- **环境变量**：`ORBIT_PLUGIN_DIR`，多个路径用 `:` 或 `,` 分隔。  
+  例：`export ORBIT_PLUGIN_DIR=/path/to/plugin1:/path/to/parent_of_plugins`
+- **配置文件**：在 `~/orbit/orbit.json` 中增加 `plugins` 段，使用 `plugin_dirs` 列表：
 
 ```json
 {
@@ -110,10 +110,10 @@ def register_tools(registry=None):
 
 1. **准备插件**：按上述结构放置 `plugin.json`，可选 `tools.py`、`skills/`。
 2. **指定目录**：  
-   - 方式一：`export MW4AGENT_PLUGIN_DIR=/path/to/my-plugin`（或多个路径）。  
-   - 方式二：在 `~/.mw4agent/mw4agent.json` 的 `plugins.plugin_dirs` 中写入路径。
+   - 方式一：`export ORBIT_PLUGIN_DIR=/path/to/my-plugin`（或多个路径）。  
+   - 方式二：在 `~/orbit/orbit.json` 的 `plugins.plugin_dirs` 中写入路径。
 3. **（可选）限制插件**：在 `plugins.plugins_enabled` 中列出要启用的插件 `name`。
-4. **启动 Gateway**：`mw4agent gateway run`；启动时会调用 `load_plugins()`，注册工具并合并插件技能。
+4. **启动 Gateway**：`orbit gateway run`；启动时会调用 `load_plugins()`，注册工具并合并插件技能。
 
 Runner 使用的工具列表和技能 snapshot 会包含插件提供的工具与技能（技能合并时默认技能同名优先）。
 

@@ -29,7 +29,7 @@
 
 ### 2. 查看 FeishuChannel.deliver 的约定
 
-在 `mw4agent/channels/plugins/feishu.py` 的 `deliver()` 中：
+在 `orbit/channels/plugins/feishu.py` 的 `deliver()` 中：
 
 - 从 **`payload.extra["inbound"]["extra"]`** 读取 **`chat_id`**、**`message_id`**、**`thread_id`**。
 - 若 **`chat_id` 为空**，则不会调飞书接口，仅执行 `print(f"[feishu:AI] {payload.text}")` 到 stdout，即**静默不发给飞书**。
@@ -38,7 +38,7 @@
 
 ### 3. 查看 dispatcher 如何构造 OutboundPayload
 
-在 `mw4agent/channels/dispatcher.py` 的 `dispatch_inbound()` 中，拿到 LLM 的 `result_text` 后调用：
+在 `orbit/channels/dispatcher.py` 的 `dispatch_inbound()` 中，拿到 LLM 的 `result_text` 后调用：
 
 ```python
 await plugin.deliver(
@@ -61,7 +61,7 @@ await plugin.deliver(
 
 ## 修复方案
 
-在 **`mw4agent/channels/dispatcher.py`** 中，调用 `plugin.deliver()` 时，将当前入站的 **`ctx.extra`** 带入 `OutboundPayload.extra`，格式与 Feishu `deliver` 的约定一致：
+在 **`orbit/channels/dispatcher.py`** 中，调用 `plugin.deliver()` 时，将当前入站的 **`ctx.extra`** 带入 `OutboundPayload.extra`，格式与 Feishu `deliver` 的约定一致：
 
 ```python
 # 将入站上下文的 extra（含 chat_id、message_id 等）传给 deliver，供 Feishu 等 channel 回发到正确会话
@@ -82,7 +82,7 @@ await plugin.deliver(
 在保持上述 `extra` 传递的前提下，做了以下对齐与加固：
 
 1. **发送格式**  
-   `mw4agent/feishu/client.py` 中发送消息改为与 OpenClaw 一致：**`msg_type: "post"`**，**content** 为 `zh_cn.content` 的 JSON 字符串（`[{"tag":"md","text": "..."}]`），不再使用 `msg_type: "text"`。部分环境或权限下 text 与 post 行为可能不同，统一用 post 便于排查。
+   `orbit/feishu/client.py` 中发送消息改为与 OpenClaw 一致：**`msg_type: "post"`**，**content** 为 `zh_cn.content` 的 JSON 字符串（`[{"tag":"md","text": "..."}]`），不再使用 `msg_type: "text"`。部分环境或权限下 text 与 post 行为可能不同，统一用 post 便于排查。
 
 2. **session_id 回退**  
    dispatcher 传入 `extra["inbound"]["session_id"]`（即 `ctx.session_id`）。Feishu 下 session 即会话 chat_id，deliver 在拿不到 `extra.chat_id` 时用 **`session_id`** 作为 chat_id 回退，避免因字段缺失导致只打印不请求 API。
@@ -99,9 +99,9 @@ await plugin.deliver(
 
 | 位置 | 说明 |
 |------|------|
-| `mw4agent/channels/dispatcher.py` | `dispatch_inbound()` 中构造 `OutboundPayload` 时传入 `extra={"inbound": {"extra": ctx.extra, "session_id": ctx.session_id}}` |
-| `mw4agent/channels/plugins/feishu.py` | `deliver()` 从 `payload.extra["inbound"]["extra"]` 取 `chat_id`、`message_id`、`thread_id`，缺省时用 `inbound.session_id` 作 chat_id；无 chat_id 时打 warning 并仅打印；调用 API 前后有 info/exception 日志 |
-| `mw4agent/feishu/client.py` | 使用 `msg_type: "post"` 与 `zh_cn` 富文本 content，与 feishu-openclaw-plugin 的 send.js 一致 |
+| `orbit/channels/dispatcher.py` | `dispatch_inbound()` 中构造 `OutboundPayload` 时传入 `extra={"inbound": {"extra": ctx.extra, "session_id": ctx.session_id}}` |
+| `orbit/channels/plugins/feishu.py` | `deliver()` 从 `payload.extra["inbound"]["extra"]` 取 `chat_id`、`message_id`、`thread_id`，缺省时用 `inbound.session_id` 作 chat_id；无 chat_id 时打 warning 并仅打印；调用 API 前后有 info/exception 日志 |
+| `orbit/feishu/client.py` | 使用 `msg_type: "post"` 与 `zh_cn` 富文本 content，与 feishu-openclaw-plugin 的 send.js 一致 |
 
 ---
 
@@ -179,13 +179,13 @@ RuntimeError: this event loop is already running.
 4. **收尾**  
    在 `_run_ws()` 的 `finally` 里对 `ws_loop.close()`，以便在线程退出或异常时释放资源（若 `start()` 一直阻塞不返回，则不会执行到 close，属预期）。
 
-实现上，将「创建 `lark.ws.Client` 并调用 `start()`」从主线程挪到 `_run_ws()` 内部，在 `_run_ws()` 开头完成上述 1、2 步后再创建 Client 并 start。相关代码见 `mw4agent/channels/plugins/feishu.py` 中 `_run_ws_monitor` 的 `_run_ws()` 定义。
+实现上，将「创建 `lark.ws.Client` 并调用 `start()`」从主线程挪到 `_run_ws()` 内部，在 `_run_ws()` 开头完成上述 1、2 步后再创建 Client 并 start。相关代码见 `orbit/channels/plugins/feishu.py` 中 `_run_ws_monitor` 的 `_run_ws()` 定义。
 
 ---
 
 # 聊天时「思考/正在输入」表情（消息下方）如何实现
 
-OpenClaw 飞书插件在用户发消息后、机器人回复前，会在**用户那条消息下方**显示一个「正在输入」/思考态的表情（如铅笔或思考 emoji）。本节说明其实现方式，便于在 mw4agent 中复现。
+OpenClaw 飞书插件在用户发消息后、机器人回复前，会在**用户那条消息下方**显示一个「正在输入」/思考态的表情（如铅笔或思考 emoji）。本节说明其实现方式，便于在 orbit 中复现。
 
 ---
 
@@ -250,8 +250,8 @@ OpenClaw 飞书插件在用户发消息后、机器人回复前，会在**用户
 
 ---
 
-## 在 mw4agent 中复现的思路
+## 在 orbit 中复现的思路
 
-1. **飞书 API**：在 `mw4agent` 的 Feishu 客户端中增加「消息表情回复」的添加/删除接口（或直接调用现有 HTTP 封装），对应飞书文档的 `reaction_type.emoji_type` 与 `reaction_id`。
+1. **飞书 API**：在 `orbit` 的 Feishu 客户端中增加「消息表情回复」的添加/删除接口（或直接调用现有 HTTP 封装），对应飞书文档的 `reaction_type.emoji_type` 与 `reaction_id`。
 2. **时机**：在 `ChannelDispatcher.dispatch_inbound` 中，在调用 agent 之前对 `ctx.extra["message_id"]` 添加 reaction（如 Typing 或 THINKING），在 `deliver` 完成或异常时删除该 reaction（需要保存返回的 `reaction_id`）。
 3. **可选**：通过配置或 channel 参数选择是否开启「思考/输入中」指示器，以及使用 `Typing` 还是 `THINKING` emoji。

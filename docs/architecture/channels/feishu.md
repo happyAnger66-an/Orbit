@@ -1,6 +1,6 @@
-# MW4Agent Feishu 通道设计与实现规划
+# Orbit Feishu 通道设计与实现规划
 
-本文档基于 `feishu-openclaw-plugin` 的架构，设计在 MW4Agent 中实现 Feishu 通道的 Python 版本方案，并给出分阶段 TODO 列表。
+本文档基于 `feishu-openclaw-plugin` 的架构，设计在 Orbit 中实现 Feishu 通道的 Python 版本方案，并给出分阶段 TODO 列表。
 
 ---
 
@@ -31,12 +31,12 @@ FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
 当 **未配置 Gateway**（`ChannelRuntime.gateway_base_url` 为空）且 `ChannelDispatcher` 调用 **直连** `AgentRunner` 时，**仅在当前会话已开启推送** 的情况下，在本轮请求上订阅 `AgentRunner.event_stream` 的 `tool` 流：每次工具 **开始 / 结束 / 异常** 会格式化为 `[进度] ...` 文本，经 `FeishuChannel.feishu_send_progress()` 发到同一 `chat_id`（尽量沿用入站消息的回复线/话题，与 `deliver` 一致）。
 
 - **会话开关（默认关闭）**：在飞书消息中发送 **`/tool_exec_start`** 后，本会话开始推送工具进度；发送 **`/tool_exec_stop`** 后停止。状态保存在 `SessionEntry.metadata["feishu_tool_progress_push"]`。同一消息可在命令后紧跟正文，例如：`/tool_exec_start 请列出当前目录`（会先开启推送，再让 Agent 处理「请列出当前目录」）。
-- **总开关（仍生效）**：根配置 `channels.feishu.progress_updates: false`，或环境变量 `MW4AGENT_FEISHU_PROGRESS=0`，会关闭整个能力（即使已 `/tool_exec_start`）。
+- **总开关（仍生效）**：根配置 `channels.feishu.progress_updates: false`，或环境变量 `ORBIT_FEISHU_PROGRESS=0`，会关闭整个能力（即使已 `/tool_exec_start`）。
 - **Gateway 模式**：当前通过 `agent` + `agent.wait` 同步等待完成，**不会**收到上述事件流；若需要飞书侧实时进度，需后续用 Gateway 的 WebSocket/事件流对接（或改为直连 AgentRunner）。
 
 ### 1.2 关键组件设计
 
-- **`mw4agent/channels/plugins/feishu.py`**
+- **`orbit/channels/plugins/feishu.py`**
   - `FeishuChannel(ChannelPlugin)`：
     - `id="feishu"`
     - `meta = ChannelMeta(id="feishu", label="Feishu", docs_path="/channels/feishu")`
@@ -64,7 +64,7 @@ FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
       - 卡片 → `feishu_outbound.send_payload(...)`
     - 出错时记录日志或写入事件流。
 
-- **`mw4agent/channels/feishu_outbound.py`（新文件）**
+- **`orbit/channels/feishu_outbound.py`（新文件）**
   - 角色：对标 JS 插件中的 `feishuOutbound`，是通道级的统一出站适配器。
   - 能力：
     - `async send_text(cfg, to, text, account_id=None, reply_to_id=None, thread_id=None, mentions=None)`：
@@ -79,7 +79,7 @@ FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
         - 带 `payload.channel_data["feishu"]["card"]` 的卡片消息：
           - 文本 + card + 媒体组合发送，并聚合 warning 信息。
 
-- **`mw4agent/feishu/client.py`（推荐新子包）**
+- **`orbit/feishu/client.py`（推荐新子包）**
   - 角色：对标 JS 中的 `LarkClient`，封装 Feishu Open API。
   - 主要接口：
     - `class FeishuClient` / 一组函数：
@@ -87,12 +87,12 @@ FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
       - `async send_card(chat_id, card_json, reply_to_message_id=None, thread_id=None, account_id=None)`
       - `async send_media(chat_id, media_url, ...)`
   - 配置：
-    - 从 mw4agent 配置或环境变量中读取 `app_id/app_secret/encrypt_key/verification_token`；
+    - 从 orbit 配置或环境变量中读取 `app_id/app_secret/encrypt_key/verification_token`；
     - 先实现最小的 `tenant_access_token` 获取与缓存，后续再增强为完整 OAuth 流程。
 
-- **CLI 集成：`mw4agent/cli/channels/register.py`**
+- **CLI 集成：`orbit/cli/channels/register.py`**
   - 新子命令：
-    - `mw4agent channels feishu run-webhook`：
+    - `orbit channels feishu run-webhook`：
       - 选项：`--session-file`、`--host`、`--port`、`--path=/feishu/webhook`、`--app-id`、`--app-secret` 等；
       - 流程：
         - `get_channel_registry().register_plugin(FeishuChannel(...))`
@@ -110,19 +110,19 @@ FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
    - [ ] 在 `setup.py` 中确认/补充 Feishu 所需依赖（`httpx`、如需可加 `python-jose` 等）。
 
 2. **Feishu 客户端封装**
-   - [ ] 新建 `mw4agent/feishu/client.py`：
+   - [ ] 新建 `orbit/feishu/client.py`：
      - 提供 `send_text` / `send_card` / `send_media` 三个最小接口；
      - 支持通过 app_id/app_secret 获取 tenant_access_token，并做简单缓存。
    - [ ] 为客户端添加基础日志与错误输出，方便排查。
 
 3. **出站适配器**
-   - [ ] 新建 `mw4agent/channels/feishu_outbound.py`：
+   - [ ] 新建 `orbit/channels/feishu_outbound.py`：
      - `send_text`：处理 mention 前缀（可先简化），然后调 `FeishuClient.send_text`；
      - `send_media`：先发文本再发媒体，或在无 mediaUrl 时回退到文本；
      - `send_payload`：对标 JS 插件 `feishuOutbound.sendPayload` 的最小子集。
 
 4. **ChannelPlugin 实现**
-   - [ ] 新建 `mw4agent/channels/plugins/feishu.py`：
+   - [ ] 新建 `orbit/channels/plugins/feishu.py`：
      - 定义 `FeishuChannel` 的 `id/meta/capabilities/dock`；
      - 实现 `deliver`，从 `OutboundPayload.extra["inbound"]` 中读取 `chat_id` 等信息，调用 `feishu_outbound`。
 
@@ -150,15 +150,15 @@ FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
 
 8. **长连接 WebSocket 模式（官方 SDK 对齐）**
    - [x] 在 `FeishuChannel` 中增加 `connection_mode` 字段，支持 `"webhook"` 和 `"websocket"` 两种模式；
-   - [x] 在 CLI 中通过 `mw4agent channels feishu run --mode webhook|websocket` 选择模式；
+   - [x] 在 CLI 中通过 `orbit channels feishu run --mode webhook|websocket` 选择模式；
    - [ ] 在 `_run_ws_monitor` 中集成官方 SDK（`lark-oapi`）的 WebSocket 事件订阅：
      - 初始化 SDK 客户端；
      - 注册事件回调，将 Feishu 事件转换为 `InboundContext`；
      - 建立并维持长连接，处理 abort/关闭逻辑。
 
 9. **多账号支持**
-   - [ ] 设计 mw4agent 的 Feishu 多账号配置结构（对标 `cfg.channels.feishu.accounts`）；
-   - [ ] 新建 `mw4agent/feishu/accounts.py`：
+   - [ ] 设计 orbit 的 Feishu 多账号配置结构（对标 `cfg.channels.feishu.accounts`）；
+   - [ ] 新建 `orbit/feishu/accounts.py`：
      - `get_feishu_account_ids(cfg)` / `get_feishu_account(cfg, account_id)` / `get_enabled_feishu_accounts(cfg)`；
      - 用于 `FeishuClient` 和 `FeishuChannel` 选择正确的账号（如 prod/uat）。
 
@@ -174,7 +174,7 @@ FeishuChannel.deliver()  → 调用 Feishu Open API 发送消息/卡片
     - [ ] 提供 `build_markdown_card(text)` 帮助函数，对标 JS 的 `buildMarkdownCard`。
 
 12. **OAuth/授权（中后期）**
-    - [ ] 在 mw4agent 的工具系统中增加 `feishu_oauth` 工具：
+    - [ ] 在 orbit 的工具系统中增加 `feishu_oauth` 工具：
       - 仅暴露安全动作（如 revoke），不返回 token 明文；
     - [ ] 参考 OpenClaw `executeAuthorize`：
       - 用 Python 实现 Device Flow 授权 + 授权卡片 + synthetic message 自动重试；

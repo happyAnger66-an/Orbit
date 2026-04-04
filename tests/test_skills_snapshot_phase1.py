@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import mw4agent.skills.manager as skills_manager_mod
-from mw4agent.agents.skills.snapshot import build_skill_snapshot
-from mw4agent.config.root import write_root_config
-from mw4agent.plugin import get_plugin_skill_source
+import orbit.skills.manager as skills_manager_mod
+from orbit.agents.skills.snapshot import build_skill_snapshot
+from orbit.config.root import write_root_config
+from orbit.plugin import get_plugin_skill_source
 
 
 def _write_skill_json(path: Path, name: str, desc: str) -> None:
@@ -24,9 +24,9 @@ def test_build_skill_snapshot_includes_version_sources_and_filter(tmp_path: Path
     extra_skills = tmp_path / "extra_skills"
     plugin_skills = tmp_path / "plugin_skills"
 
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    monkeypatch.setenv("MW4AGENT_SKILLS_DIR", str(home_skills))
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_SKILLS_DIR", str(home_skills))
+    monkeypatch.setenv("ORBIT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 
     _write_skill_json(workspace / "skills" / "ws_only.json", "ws_only", "Workspace skill")
     _write_skill_json(home_skills / "home_only.json", "home_only", "Home skill")
@@ -64,9 +64,9 @@ def test_build_skill_snapshot_applies_prompt_budget(tmp_path: Path, monkeypatch)
     cfg_dir = tmp_path / "cfg"
     workspace = tmp_path / "workspace"
     home_skills = tmp_path / "home_skills"
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    monkeypatch.setenv("MW4AGENT_SKILLS_DIR", str(home_skills))
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_SKILLS_DIR", str(home_skills))
+    monkeypatch.setenv("ORBIT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     monkeypatch.setattr(skills_manager_mod, "_default_skill_manager", None)
     source = get_plugin_skill_source()
     source._dirs.clear()

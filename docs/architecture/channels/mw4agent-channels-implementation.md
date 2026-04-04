@@ -1,6 +1,6 @@
-# MW4Agent Channels（OpenClaw 风格）实现说明
+# Orbit Channels（OpenClaw 风格）实现说明
 
-本文档说明 MW4Agent 中按 OpenClaw channels 架构实现的**可扩展通道层**，以及首个 `console` 通道如何打通端到端链路。
+本文档说明 Orbit 中按 OpenClaw channels 架构实现的**可扩展通道层**，以及首个 `console` 通道如何打通端到端链路。
 
 ## 目标
 
@@ -14,7 +14,7 @@
 ## 目录结构
 
 ```
-mw4agent/channels/
+orbit/channels/
 ├── types.py                # InboundContext/OutboundPayload 等核心类型
 ├── dock.py                 # ChannelDock（轻量策略入口）
 ├── mention_gating.py        # mention gating（OpenClaw 风格）
@@ -72,7 +72,7 @@ mw4agent/channels/
 运行 console monitor：
 
 ```bash
-python3 -m mw4agent channels console run
+python3 -m orbit channels console run
 ```
 
 退出：
@@ -88,7 +88,7 @@ python3 -m mw4agent channels console run
 
 ## 扩展新通道的方式
 
-1. 新建插件：`mw4agent/channels/plugins/<channel>.py`
+1. 新建插件：`orbit/channels/plugins/<channel>.py`
 2. 实现 `ChannelPlugin`：
    - `run_monitor(...)`：从 SDK/webhook/轮询等拿到消息，转换成 `InboundContext`
    - `deliver(...)`：把 `OutboundPayload` 发回通道

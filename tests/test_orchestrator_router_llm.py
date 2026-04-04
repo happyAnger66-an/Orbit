@@ -1,6 +1,6 @@
 """router_llm：解析与 transcript 辅助函数单测。"""
 
-from mw4agent.gateway.orchestrator import (
+from orbit.gateway.orchestrator import (
     OrchMessage,
     _build_router_llm_user_prompt,
     _format_transcript_since_last_user,

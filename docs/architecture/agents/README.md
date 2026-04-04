@@ -1,6 +1,6 @@
-# MW4Agent 智能体系统文档
+# Orbit 智能体系统文档
 
-本目录包含 MW4Agent 智能体执行系统的设计文档。
+本目录包含 Orbit 智能体执行系统的设计文档。
 
 ## 文档列表
 
@@ -13,9 +13,9 @@
 ## 快速开始
 
 ```python
-from mw4agent.agents import AgentRunner
-from mw4agent.agents.session import SessionManager
-from mw4agent.agents.types import AgentRunParams
+from orbit.agents import AgentRunner
+from orbit.agents.session import SessionManager
+from orbit.agents.types import AgentRunParams
 
 # 初始化
 session_manager = SessionManager("sessions.json")

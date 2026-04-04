@@ -2,7 +2,7 @@
 
 本文总结 OpenClaw 中 `web_search` 工具的实现链路：工具如何被注册给 LLM、如何选择 provider 与读取鉴权、如何通过网络安全护栏访问外部搜索 API、如何缓存与格式化输出，以及如何对外部内容做防 prompt-injection 包装。
 
-> 说明：本文描述的是 OpenClaw 仓库内的实现（TypeScript），便于 `mw4agent` 对齐设计与实现。
+> 说明：本文描述的是 OpenClaw 仓库内的实现（TypeScript），便于 `orbit` 对齐设计与实现。
 
 ## 总览：关键文件与职责
 
@@ -140,9 +140,9 @@ OpenClaw 根据 provider 走不同的执行分支，并返回不同形状的 pay
 
 Gemini 分支里还会涉及 grounding/citations 的抽取与（部分场景）redirect 解析。
 
-## 7）对齐 `mw4agent` 的实现建议（要点）
+## 7）对齐 `orbit` 的实现建议（要点）
 
-若在 `mw4agent` 实现类似的 `web_search`，建议按 OpenClaw 的分层拆解：
+若在 `orbit` 实现类似的 `web_search`，建议按 OpenClaw 的分层拆解：
 
 - **Tool 层**：参数 schema + provider 分支 + 返回 payload shape 统一
 - **网络 guard 层**：统一 SSRF/代理/超时/response size 上限

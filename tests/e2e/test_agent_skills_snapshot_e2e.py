@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.types import AgentRunParams
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.types import AgentRunParams
 
 
 @pytest.mark.asyncio
@@ -17,14 +17,14 @@ async def test_agent_skills_snapshot_is_used_in_llm_prompt(tmp_path: Path, monke
     """Create a test skill, run AgentRunner, and assert LLM reply contains skill info.
 
     Flow:
-      1. Point MW4AGENT_SKILLS_DIR to a temp dir and create an encrypted (or plaintext fallback)
+      1. Point ORBIT_SKILLS_DIR to a temp dir and create an encrypted (or plaintext fallback)
          skill file via SkillManager.
       2. Run AgentRunner with a fresh SessionManager.
       3. Verify the echo LLM reply includes the skills summary emitted by build_skill_snapshot().
     """
     # 1) Patch build_skill_snapshot so the test is independent of the real skills dir.
-    import mw4agent.agents.skills.snapshot as snapshot_mod
-    import mw4agent.agents.runner.runner as runner_mod
+    import orbit.agents.skills.snapshot as snapshot_mod
+    import orbit.agents.runner.runner as runner_mod
 
     def _fake_build_skill_snapshot(*args, **kwargs):
         prompt = "Available skills:\n- demo_skill: Test skill that should appear in the LLM prompt."

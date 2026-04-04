@@ -1,6 +1,6 @@
-# mw4agent：LLM Router Orchestrator（仅 `strategy=router_llm`）
+# orbit：LLM Router Orchestrator（仅 `strategy=router_llm`）
 
-本文档说明 `mw4agent/gateway/orchestrator.py` 中 **`router_llm` 策略**下：
+本文档说明 `orbit/gateway/orchestrator.py` 中 **`router_llm` 策略**下：
 
 - 如何选择下一位 agent（含回退）
 - router 的 prompt 与 agent 侧的 context 注入

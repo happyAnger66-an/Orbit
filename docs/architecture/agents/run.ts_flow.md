@@ -4,7 +4,7 @@
 
 - `export async function runEmbeddedPiAgent(params: RunEmbeddedPiAgentParams): Promise<EmbeddedPiRunResult>`
 
-对其 **何时被调用（执行时机）** 和 **内部执行流程** 进行梳理，作为 MW4Agent 设计与实现的参考资料。
+对其 **何时被调用（执行时机）** 和 **内部执行流程** 进行梳理，作为 Orbit 设计与实现的参考资料。
 
 ---
 
@@ -355,11 +355,11 @@ const agentMeta: EmbeddedPiAgentMeta = {
     - thinking level 回退；
     - 各类错误（image size、role ordering、timeout 等）的友好文案。
 
-对于 MW4Agent 而言，可以将 `runEmbeddedPiAgent` 看作高阶版本的 `AgentRunner.run`：
+对于 Orbit 而言，可以将 `runEmbeddedPiAgent` 看作高阶版本的 `AgentRunner.run`：
 
-- 当前 MW4Agent 已有：
+- 当前 Orbit 已有：
   - runId/session 串行化（`CommandQueue` + `SessionManager`）
-  - LLM backend 抽象（`mw4agent.llm.backends.generate_reply`）
+  - LLM backend 抽象（`orbit.llm.backends.generate_reply`）
   - 事件流（`StreamEvent` + `EventStream`）
 - 未来如果要增强高可用和多账号/多模型容错，可以逐步引入：
   - provider/model 解析与 fallback 策略；

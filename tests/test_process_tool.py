@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mw4agent.agents.tools.process_tool import ProcessTool, _PROCESS_REGISTRY
+from orbit.agents.tools.process_tool import ProcessTool, _PROCESS_REGISTRY
 
 
 @pytest.mark.asyncio

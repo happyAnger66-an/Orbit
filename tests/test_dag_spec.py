@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mw4agent.gateway.dag_spec import normalize_dag_dict, topological_order
+from orbit.gateway.dag_spec import normalize_dag_dict, topological_order
 
 
 def test_normalize_simple_chain() -> None:

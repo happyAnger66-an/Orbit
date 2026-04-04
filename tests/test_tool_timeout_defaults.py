@@ -4,17 +4,17 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.tools.exec_tool import ExecTool
-from mw4agent.agents.tools.timeout_defaults import (
+from orbit.agents.tools.exec_tool import ExecTool
+from orbit.agents.tools.timeout_defaults import (
     resolve_default_tool_timeout_ms,
     resolve_timeout_ms_param,
 )
-from mw4agent.config.root import write_root_config
+from orbit.config.root import write_root_config
 
 
 def test_resolve_default_tool_timeout_ms_from_config(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(tmp_path))
-    monkeypatch.delenv("MW4AGENT_TOOLS_TIMEOUT_MS", raising=False)
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("ORBIT_TOOLS_TIMEOUT_MS", raising=False)
     assert resolve_default_tool_timeout_ms() is None
 
     write_root_config({"tools": {"timeout_ms": 45000}})
@@ -22,9 +22,9 @@ def test_resolve_default_tool_timeout_ms_from_config(tmp_path: Path, monkeypatch
 
 
 def test_env_overrides_config(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(tmp_path))
     write_root_config({"tools": {"timeout_ms": 1000}})
-    monkeypatch.setenv("MW4AGENT_TOOLS_TIMEOUT_MS", "99999")
+    monkeypatch.setenv("ORBIT_TOOLS_TIMEOUT_MS", "99999")
     assert resolve_default_tool_timeout_ms() == 99999
 
 

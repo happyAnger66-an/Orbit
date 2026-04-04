@@ -1,6 +1,6 @@
 # Shannon Sandbox 执行原理与安全边界
 
-本文基于姊妹仓库 **Shannon**（与 mw4agent 同级的 `Shannon/`）中 **agent-core（Rust）** 与 **llm-service（Python）** 的实现，说明 Shannon 所称「WASI 隔离工作区」类沙箱的**职责划分、创建方式、请求级执行流程与生命周期**，便于与 mw4agent 编排/工具链做安全对照。
+本文基于姊妹仓库 **Shannon**（与 orbit 同级的 `Shannon/`）中 **agent-core（Rust）** 与 **llm-service（Python）** 的实现，说明 Shannon 所称「WASI 隔离工作区」类沙箱的**职责划分、创建方式、请求级执行流程与生命周期**，便于与 orbit 编排/工具链做安全对照。
 
 > **范围说明**：Shannon 的「沙箱」在代码里主要体现为两层——(1) 面向 Agent 工具的 **gRPC `SandboxService`**（会话目录隔离 + 安全命令执行）；(2) 可选的 **`WasmSandbox`**（Wasmtime 执行 WASM / 子进程 + rlimit）。二者目标不同，下文分开描述。
 
@@ -89,10 +89,10 @@
 
 ---
 
-## 6. 与 mw4agent 的简要对照
+## 6. 与 orbit 的简要对照
 
 - Shannon 工具链通过 **稳定的 session_id + 可选 user_id** 将文件与「安全 shell」约束在 agent-core 一侧。
-- mw4agent Gateway/桌面编排若对接 Shannon 工具，应 **沿用相同会话键与记忆键**，并在产品层定义 **会话结束何时调用 `delete_workspace`**（或等价清理），避免磁盘与工作区配额长期堆积。
+- orbit Gateway/桌面编排若对接 Shannon 工具，应 **沿用相同会话键与记忆键**，并在产品层定义 **会话结束何时调用 `delete_workspace`**（或等价清理），避免磁盘与工作区配额长期堆积。
 
 ---
 
@@ -113,4 +113,4 @@
 
 ## 8. 参考
 
-- mw4agent 侧 Shannon 编排索引：`mw4agent/docs/orchestrating_shannon.md`
+- orbit 侧 Shannon 编排索引：`orbit/docs/orchestrating_shannon.md`

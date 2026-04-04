@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mw4agent.skills.format_md import parse_skill_markdown
+from orbit.skills.format_md import parse_skill_markdown
 
 
 def test_parse_skill_markdown_openclaw_style() -> None:

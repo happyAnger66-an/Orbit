@@ -8,19 +8,19 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_web_search_missing_api_key(monkeypatch):
-    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+    from orbit.agents.tools.web_search_tool import WebSearchTool
 
     monkeypatch.delenv("BRAVE_API_KEY", raising=False)
     monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
     monkeypatch.delenv("SERPER_API_KEY", raising=False)
 
     def _cfg(section, default=None):
-        # Force empty tools so web_search stays disabled regardless of host ~/.mw4agent.
+        # Force empty tools so web_search stays disabled regardless of host ~/.orbit.
         if section == "tools":
             return {}
         return default
 
-    monkeypatch.setattr("mw4agent.agents.tools.web_search_tool.read_root_section", _cfg)
+    monkeypatch.setattr("orbit.agents.tools.web_search_tool.read_root_section", _cfg)
 
     tool = WebSearchTool()
     res = await tool.execute("tc1", {"query": "hello"})
@@ -30,11 +30,11 @@ async def test_web_search_missing_api_key(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_web_search_brave_parsing_and_wrapping(monkeypatch):
-    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+    from orbit.agents.tools.web_search_tool import WebSearchTool
 
     monkeypatch.setenv("BRAVE_API_KEY", "k_test")
     monkeypatch.setattr(
-        "mw4agent.agents.tools.web_search_tool.read_root_section",
+        "orbit.agents.tools.web_search_tool.read_root_section",
         lambda section, default=None: {"web": {"search": {"enabled": True}}} if section == "tools" else default,
     )
 
@@ -80,11 +80,11 @@ async def test_web_search_brave_parsing_and_wrapping(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_web_search_cache_hit(monkeypatch):
-    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+    from orbit.agents.tools.web_search_tool import WebSearchTool
 
     monkeypatch.setenv("BRAVE_API_KEY", "k_test")
     monkeypatch.setattr(
-        "mw4agent.agents.tools.web_search_tool.read_root_section",
+        "orbit.agents.tools.web_search_tool.read_root_section",
         lambda section, default=None: {"web": {"search": {"enabled": True}}} if section == "tools" else default,
     )
 
@@ -118,7 +118,7 @@ async def test_web_search_cache_hit(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_web_search_perplexity_missing_key(monkeypatch):
-    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+    from orbit.agents.tools.web_search_tool import WebSearchTool
 
     # Force provider selection to perplexity (via config).
     def _cfg(section, default=None):
@@ -126,7 +126,7 @@ async def test_web_search_perplexity_missing_key(monkeypatch):
             return {"web": {"search": {"enabled": True, "provider": "perplexity"}}}
         return default
 
-    monkeypatch.setattr("mw4agent.agents.tools.web_search_tool.read_root_section", _cfg)
+    monkeypatch.setattr("orbit.agents.tools.web_search_tool.read_root_section", _cfg)
     monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
 
     tool = WebSearchTool()
@@ -137,7 +137,7 @@ async def test_web_search_perplexity_missing_key(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_web_search_perplexity_parsing(monkeypatch):
-    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+    from orbit.agents.tools.web_search_tool import WebSearchTool
 
     def _cfg(section, default=None):
         if section == "tools":
@@ -146,7 +146,7 @@ async def test_web_search_perplexity_parsing(monkeypatch):
             }
         return default
 
-    monkeypatch.setattr("mw4agent.agents.tools.web_search_tool.read_root_section", _cfg)
+    monkeypatch.setattr("orbit.agents.tools.web_search_tool.read_root_section", _cfg)
 
     payload = {
         "content": "answer text",
@@ -181,7 +181,7 @@ async def test_web_search_perplexity_parsing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_web_search_serper_parsing(monkeypatch):
-    from mw4agent.agents.tools.web_search_tool import WebSearchTool
+    from orbit.agents.tools.web_search_tool import WebSearchTool
 
     def _cfg(section, default=None):
         if section == "tools":
@@ -197,7 +197,7 @@ async def test_web_search_serper_parsing(monkeypatch):
             }
         return default
 
-    monkeypatch.setattr("mw4agent.agents.tools.web_search_tool.read_root_section", _cfg)
+    monkeypatch.setattr("orbit.agents.tools.web_search_tool.read_root_section", _cfg)
 
     api_payload = {
         "organic": [
@@ -222,12 +222,12 @@ async def test_web_search_serper_parsing(monkeypatch):
         opens.append((req, proxy))
         return _Resp()
 
-    monkeypatch.setattr("mw4agent.agents.tools.web_search_tool._urlopen", fake_open)
+    monkeypatch.setattr("orbit.agents.tools.web_search_tool._urlopen", fake_open)
 
     tool = WebSearchTool()
     res = await tool.execute(
         "tc_s1",
-        {"query": "mw4agent", "count": 5, "gl": "cn", "hl": "zh-cn", "page": 2},
+        {"query": "orbit", "count": 5, "gl": "cn", "hl": "zh-cn", "page": 2},
     )
     assert res.success is True
     data = res.result

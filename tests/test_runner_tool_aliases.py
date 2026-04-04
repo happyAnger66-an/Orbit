@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.tools.base import AgentTool, ToolResult
-from mw4agent.agents.tools.registry import ToolRegistry
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.tools.base import AgentTool, ToolResult
+from orbit.agents.tools.registry import ToolRegistry
 
 
 class _FakeExecTool(AgentTool):

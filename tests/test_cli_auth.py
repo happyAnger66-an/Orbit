@@ -7,13 +7,13 @@ import sys
 import click
 from click.testing import CliRunner
 
-# Ensure local repo sources take precedence over any installed mw4agent package.
+# Ensure local repo sources take precedence over any installed orbit package.
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from mw4agent.cli.configuration import register_configuration_cli
-from mw4agent.config.root import read_root_config
+from orbit.cli.configuration import register_configuration_cli
+from orbit.config.root import read_root_config
 
 
 def _build_cli() -> click.Group:
@@ -28,12 +28,12 @@ def _build_cli() -> click.Group:
 def test_configuration_auth_set_and_effective(tmp_path, monkeypatch):
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
     # Avoid encryption warning noise in CLI output (must be base64-encoded 32 bytes).
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+    monkeypatch.setenv("ORBIT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 
     # seed config
-    with open(cfg_dir / "mw4agent.json", "w", encoding="utf-8") as f:
+    with open(cfg_dir / "orbit.json", "w", encoding="utf-8") as f:
         json.dump({"llm": {"provider": "echo"}}, f)
 
     runner = CliRunner()

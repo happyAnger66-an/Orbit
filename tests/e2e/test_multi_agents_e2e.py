@@ -18,8 +18,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-def _force_local_mw4agent_import() -> None:
-    """Ensure we import mw4agent from this repo checkout, not site-packages."""
+def _force_local_orbit_import() -> None:
+    """Ensure we import orbit from this repo checkout, not site-packages."""
     import importlib
 
     if str(_REPO_ROOT) not in sys.path:
@@ -29,16 +29,16 @@ def _force_local_mw4agent_import() -> None:
         sys.path.remove(str(_REPO_ROOT))
         sys.path.insert(0, str(_REPO_ROOT))
 
-    mod = sys.modules.get("mw4agent")
+    mod = sys.modules.get("orbit")
     if mod is not None:
         mod_file = getattr(mod, "__file__", "") or ""
         if str(_REPO_ROOT) not in mod_file:
             # Drop previously imported site-packages copy.
             for name in list(sys.modules.keys()):
-                if name == "mw4agent" or name.startswith("mw4agent."):
+                if name == "orbit" or name.startswith("orbit."):
                     del sys.modules[name]
     importlib.invalidate_caches()
-    importlib.import_module("mw4agent")
+    importlib.import_module("orbit")
 
 
 def _find_free_port() -> int:
@@ -75,16 +75,16 @@ def _rpc_call(base_url: str, method: str, params: dict, timeout_s: float = 5.0) 
 
 def test_multi_agent_migrates_legacy_sessions_file(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "0")
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
+    monkeypatch.setenv("ORBIT_IS_ENC", "0")
 
-    _force_local_mw4agent_import()
+    _force_local_orbit_import()
 
-    from mw4agent.agents.agent_manager import AgentManager
-    from mw4agent.agents.session import MultiAgentSessionManager
+    from orbit.agents.agent_manager import AgentManager
+    from orbit.agents.session import MultiAgentSessionManager
 
     # Create a legacy session store in the current working directory.
-    legacy = tmp_path / "mw4agent.sessions.json"
+    legacy = tmp_path / "orbit.sessions.json"
     legacy.write_text(
         json.dumps(
             {
@@ -117,7 +117,7 @@ def test_multi_agent_migrates_legacy_sessions_file(tmp_path: Path, monkeypatch) 
     assert any(s.get("session_id") == "legacy-s1" for s in data["sessions"])
 
     # Backup should exist next to the legacy file.
-    backups = sorted(tmp_path.glob("mw4agent.sessions.json.bak.*"))
+    backups = sorted(tmp_path.glob("orbit.sessions.json.bak.*"))
     assert backups, "Expected a backup of legacy sessions store to be created"
 
 
@@ -125,17 +125,17 @@ def test_gateway_multi_agent_creates_isolated_state(tmp_path: Path, monkeypatch)
     """E2E: start gateway in multi-agent mode (no --session-file), run two agents, and verify per-agent dirs/stores."""
 
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "0")
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
+    monkeypatch.setenv("ORBIT_IS_ENC", "0")
     # Ensure the gateway child process imports local repo code even if cwd changes.
     monkeypatch.setenv("PYTHONPATH", str(_REPO_ROOT))
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    _force_local_mw4agent_import()
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    _force_local_orbit_import()
 
     # Use echo provider for deterministic runs (no external network).
-    (cfg_dir / "mw4agent.json").write_text(
+    (cfg_dir / "orbit.json").write_text(
         json.dumps({"llm": {"provider": "echo", "model_id": "echo"}}),
         encoding="utf-8",
     )
@@ -144,10 +144,10 @@ def test_gateway_multi_agent_creates_isolated_state(tmp_path: Path, monkeypatch)
     base_url = f"http://127.0.0.1:{port}"
 
     def _run_gateway() -> None:
-        # Ensure child imports local checkout even if mw4agent is installed globally.
+        # Ensure child imports local checkout even if orbit is installed globally.
         if str(_REPO_ROOT) not in sys.path:
             sys.path.insert(0, str(_REPO_ROOT))
-        from mw4agent.gateway.server import create_app
+        from orbit.gateway.server import create_app
 
         app = create_app(session_file="")  # multi-agent mode
         config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
@@ -184,7 +184,7 @@ def test_gateway_multi_agent_creates_isolated_state(tmp_path: Path, monkeypatch)
 
         # Verify per-agent directories and session stores exist.
         for agent_id in ("a1", "a2"):
-            agent_dir = tmp_path / ".mw4agent" / "agents" / agent_id
+            agent_dir = tmp_path / ".orbit" / "agents" / agent_id
             assert agent_dir.exists()
             assert (agent_dir / "workspace").exists()
             store = agent_dir / "sessions" / "sessions.json"

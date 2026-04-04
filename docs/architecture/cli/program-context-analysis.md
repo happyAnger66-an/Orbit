@@ -1,6 +1,6 @@
 # OpenClaw ProgramContext 作用分析
 
-本文档深入分析 OpenClaw CLI 中 `ProgramContext` 的作用、设计和使用场景，为 MW4Agent 的 CLI 实现提供参考。
+本文档深入分析 OpenClaw CLI 中 `ProgramContext` 的作用、设计和使用场景，为 Orbit 的 CLI 实现提供参考。
 
 ## 1. ProgramContext 概述
 
@@ -317,11 +317,11 @@ if (primary) {
 - 所有命令共享同一个上下文
 - 可以通过环境变量影响行为（如 `OPENCLAW_EAGER_CHANNEL_OPTIONS`）
 
-## 9. MW4Agent 实现参考
+## 9. Orbit 实现参考
 
 ### 9.1 当前实现
 
-MW4Agent 的 `ProgramContext` 实现位于 `mw4agent/cli/context.py`：
+Orbit 的 `ProgramContext` 实现位于 `orbit/cli/context.py`：
 
 ```python
 class ProgramContext:
@@ -352,7 +352,7 @@ class ProgramContext:
 
 ### 9.2 改进建议
 
-基于 OpenClaw 的设计，MW4Agent 可以改进：
+基于 OpenClaw 的设计，Orbit 可以改进：
 
 1. **懒加载优化**
    - ✅ 已实现：使用 `@property` 装饰器实现懒加载
@@ -423,4 +423,4 @@ ProgramContext 是 CLI 架构中的关键组件，它提供了统一的上下文
 
 - OpenClaw 源码：`src/cli/program/context.ts`
 - OpenClaw 测试：`src/cli/program/context.test.ts`
-- MW4Agent 实现：`mw4agent/cli/context.py`
+- Orbit 实现：`orbit/cli/context.py`

@@ -6,19 +6,19 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.agent_manager import AgentManager
-from mw4agent.agents.types import AgentRunParams
-from mw4agent.config import ConfigManager, get_default_config_manager
-from mw4agent.llm.backends import generate_reply
+from orbit.agents.agent_manager import AgentManager
+from orbit.agents.types import AgentRunParams
+from orbit.config import ConfigManager, get_default_config_manager
+from orbit.llm.backends import generate_reply
 
 
 @pytest.fixture
 def isolated_config(monkeypatch, tmp_path: Path):
     cfg_dir = tmp_path / "config"
     state_dir = tmp_path / "mw_state"
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(state_dir))
-    import mw4agent.config.manager as cfg_mod
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(state_dir))
+    import orbit.config.manager as cfg_mod
 
     cfg_mod._default_config_manager = None  # type: ignore[attr-defined]
     yield cfg_dir, state_dir
@@ -26,8 +26,8 @@ def isolated_config(monkeypatch, tmp_path: Path):
 
 def test_per_agent_llm_overrides_global_provider(isolated_config, monkeypatch) -> None:
     _, state_dir = isolated_config
-    monkeypatch.delenv("MW4AGENT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("MW4AGENT_LLM_MODEL", raising=False)
+    monkeypatch.delenv("ORBIT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("ORBIT_LLM_MODEL", raising=False)
 
     mgr_cfg: ConfigManager = get_default_config_manager()
     mgr_cfg.write_config(
@@ -55,7 +55,7 @@ def test_per_agent_llm_overrides_global_provider(isolated_config, monkeypatch) -
 
 def test_per_agent_model_overrides_global_only_model(isolated_config, monkeypatch) -> None:
     _, _state = isolated_config
-    monkeypatch.delenv("MW4AGENT_LLM_MODEL", raising=False)
+    monkeypatch.delenv("ORBIT_LLM_MODEL", raising=False)
 
     mgr_cfg: ConfigManager = get_default_config_manager()
     mgr_cfg.write_config("llm", {"provider": "echo", "model": "global-model"})

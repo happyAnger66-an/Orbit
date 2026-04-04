@@ -4,11 +4,11 @@ import json
 import os
 from pathlib import Path
 
-from mw4agent.feishu import user_oauth as uo
+from orbit.feishu import user_oauth as uo
 
 
 def test_oauth_store_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(tmp_path))
     uo.save_user_token_for_app(
         "cli_testapp",
         access_token="at_xxx",

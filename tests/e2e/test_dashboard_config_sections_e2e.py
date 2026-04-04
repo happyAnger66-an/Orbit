@@ -10,7 +10,7 @@ import urllib.request
 
 import pytest
 
-# Ensure local repo sources take precedence over any installed mw4agent package.
+# Ensure local repo sources take precedence over any installed orbit package.
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
@@ -53,10 +53,10 @@ def test_dashboard_config_sections_rpc_e2e(tmp_path):
 
     This covers dashboard sub-config tabs: config.sections.list / config.section.get / config.section.set.
     """
-    # Create an isolated config dir so this test doesn't read user's ~/.mw4agent
-    cfg_dir = tmp_path / "mw4agent-config"
+    # Create an isolated config dir so this test doesn't read user's ~/.orbit
+    cfg_dir = tmp_path / "orbit-config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    cfg_path = os.path.join(str(cfg_dir), "mw4agent.json")
+    cfg_path = os.path.join(str(cfg_dir), "orbit.json")
     with open(cfg_path, "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -74,11 +74,11 @@ def test_dashboard_config_sections_rpc_e2e(tmp_path):
     session_file = os.path.join(str(cfg_dir), "sessions.json")
 
     env = dict(os.environ)
-    env["MW4AGENT_CONFIG_DIR"] = str(cfg_dir)
+    env["ORBIT_CONFIG_DIR"] = str(cfg_dir)
     cmd = [
         sys.executable,
         "-m",
-        "mw4agent",
+        "orbit",
         "gateway",
         "run",
         "--bind",

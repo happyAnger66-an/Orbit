@@ -1,6 +1,6 @@
 # Skills 架构与格式说明
 
-本文档说明 MW4Agent 技能文件的格式支持与实现，以及与 OpenClaw 的兼容约定。
+本文档说明 Orbit 技能文件的格式支持与实现，以及与 OpenClaw 的兼容约定。
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## 2. 实现与修改总结
 
-### 2.1 新增模块 `mw4agent/skills/format_md.py`
+### 2.1 新增模块 `orbit/skills/format_md.py`
 
 - **`parse_skill_markdown(content: str) -> dict`**：解析 SKILL.md 风格内容（YAML frontmatter + Markdown 正文）。
 - 支持的 frontmatter 字段：
@@ -28,7 +28,7 @@
 - 正文部分放入返回字典的 **content** 键。
 - 依赖 **PyYAML** 解析 YAML；若无 PyYAML，则回退到简易的 key: value 行解析。
 
-### 2.2 修改 `mw4agent/skills/manager.py`
+### 2.2 修改 `orbit/skills/manager.py`
 
 - **`_resolve_skill_path(name)`**：按上述三种形式解析，返回 `(Path, "json"|"md")` 或 `None`。
 - **`list_skills()`**：同时列举 `.json`、`.md` 以及包含 `SKILL.md` 的子目录，按技能名去重后排序。
@@ -58,7 +58,7 @@
 
 ## 4. 相关代码位置
 
-- 技能管理：`mw4agent/skills/manager.py`
-- Markdown 解析：`mw4agent/skills/format_md.py`
-- 技能快照（注入 LLM prompt）：`mw4agent/agents/skills/snapshot.py`
+- 技能管理：`orbit/skills/manager.py`
+- Markdown 解析：`orbit/skills/format_md.py`
+- 技能快照（注入 LLM prompt）：`orbit/agents/skills/snapshot.py`
 - OpenClaw 设计参考：`docs/openclaw/skills.md`

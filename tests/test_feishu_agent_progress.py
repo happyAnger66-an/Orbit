@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from mw4agent.agents.types import StreamEvent
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.channels.feishu_agent_progress import (
+from orbit.agents.types import StreamEvent
+from orbit.agents.session.manager import SessionManager
+from orbit.channels.feishu_agent_progress import (
     FEISHU_TOOL_PROGRESS_META_KEY,
     feishu_session_wants_tool_progress,
     format_agent_stream_event_for_feishu,

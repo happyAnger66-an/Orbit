@@ -1,9 +1,9 @@
-# MW4Agent CLI 使用示例
+# Orbit CLI 使用示例
 
 ## 安装
 
 ```bash
-cd /home/wujie/sources/opensrc/mw4agent
+cd /path/to/orbit-repo
 pip install -e .
 ```
 
@@ -13,50 +13,50 @@ pip install -e .
 
 ```bash
 # 主帮助
-mw4agent --help
+orbit --help
 
 # Gateway 命令帮助
-mw4agent gateway --help
+orbit gateway --help
 
 # 版本信息
-mw4agent --version
+orbit --version
 ```
 
 ### Gateway 命令
 
 ```bash
 # 运行 Gateway
-mw4agent gateway run --port 18790
+orbit gateway run --port 18790
 
 # 查看状态
-mw4agent gateway status
+orbit gateway status
 
 # 调用 Gateway RPC 方法
-mw4agent gateway call health
-mw4agent gateway call health --params '{"key": "value"}'
+orbit gateway call health
+orbit gateway call health --params '{"key": "value"}'
 
 # 发现 Gateway
-mw4agent gateway discover
+orbit gateway discover
 
 # 探测 Gateway
-mw4agent gateway probe --url ws://127.0.0.1:18790
+orbit gateway probe --url ws://127.0.0.1:18790
 
 # JSON 输出
-mw4agent gateway status --json
-mw4agent gateway call health --json
+orbit gateway status --json
+orbit gateway call health --json
 ```
 
 ## 开发模式
 
 ```bash
 # 使用开发配置
-mw4agent --dev gateway run
+orbit --dev gateway run
 ```
 
 ## 命令结构
 
 ```
-mw4agent
+orbit
 ├── gateway
 │   ├── run          # 运行 Gateway
 │   ├── status       # 查看状态

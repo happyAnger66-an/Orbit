@@ -1,4 +1,4 @@
-"""Basic tests for the MW4Agent encrypted IO framework.
+"""Basic tests for the Orbit encrypted IO framework.
 
 These tests exercise:
 - `EncryptedFileStore` round‑trip encryption / decryption;
@@ -14,8 +14,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from mw4agent.crypto import EncryptedFileStore, get_default_encrypted_store  # type: ignore[attr-defined]
-from mw4agent.crypto.secure_io import (  # type: ignore[attr-defined]
+from orbit.crypto import EncryptedFileStore, get_default_encrypted_store  # type: ignore[attr-defined]
+from orbit.crypto.secure_io import (  # type: ignore[attr-defined]
     MAGIC_HEADER,
     EncryptionConfigError,
     _load_key_from_env,
@@ -24,7 +24,7 @@ from mw4agent.crypto.secure_io import (  # type: ignore[attr-defined]
 
 
 def _make_temp_file() -> Path:
-    fd, path = tempfile.mkstemp(prefix="mw4agent.crypto.", suffix=".json")
+    fd, path = tempfile.mkstemp(prefix="orbit.crypto.", suffix=".json")
     os.close(fd)
     return Path(path)
 
@@ -85,9 +85,9 @@ def test_read_json_plaintext_fallback() -> None:
 def test_load_key_from_env_and_default_store(monkeypatch) -> None:
     """`_load_key_from_env` and `get_default_encrypted_store` obey env contract."""
     env_key = _random_key_b64(32)
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", env_key)
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "1")  # 确保加密开启，不受外部环境影响
-    import mw4agent.crypto.secure_io as secure_io_mod
+    monkeypatch.setenv("ORBIT_SECRET_KEY", env_key)
+    monkeypatch.setenv("ORBIT_IS_ENC", "1")  # 确保加密开启，不受外部环境影响
+    import orbit.crypto.secure_io as secure_io_mod
     secure_io_mod._default_store = None  # type: ignore[attr-defined]
 
     key = _load_key_from_env()
@@ -100,30 +100,30 @@ def test_load_key_from_env_and_default_store(monkeypatch) -> None:
 
 def test_load_key_from_env_missing_raises(monkeypatch) -> None:
     """Missing env var should result in a clear configuration error."""
-    monkeypatch.delenv("MW4AGENT_SECRET_KEY", raising=False)
+    monkeypatch.delenv("ORBIT_SECRET_KEY", raising=False)
     try:
         _load_key_from_env()
     except EncryptionConfigError as e:
-        assert "MW4AGENT_SECRET_KEY is not set" in str(e)
+        assert "ORBIT_SECRET_KEY is not set" in str(e)
     else:  # pragma: no cover - defensive
         raise AssertionError("expected EncryptionConfigError when env is missing")
 
 
 def test_is_encryption_enabled_switch(monkeypatch) -> None:
-    """MW4AGENT_IS_ENC controls encryption enable/disable with sensible defaults."""
+    """ORBIT_IS_ENC controls encryption enable/disable with sensible defaults."""
     # 默认：未设置或为空 → 关闭
-    monkeypatch.delenv("MW4AGENT_IS_ENC", raising=False)
+    monkeypatch.delenv("ORBIT_IS_ENC", raising=False)
     assert is_encryption_enabled() is False
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "")
+    monkeypatch.setenv("ORBIT_IS_ENC", "")
     assert is_encryption_enabled() is False
 
     # 显式关闭（以及其他未知值）都视为关闭
     for val in ("0", "false", "False", "OFF", "no", "No", "random"):
-        monkeypatch.setenv("MW4AGENT_IS_ENC", val)
+        monkeypatch.setenv("ORBIT_IS_ENC", val)
         assert is_encryption_enabled() is False
 
     # 显式开启
     for val in ("1", "true", "True", "yes", "Yes", "on", "ON"):
-        monkeypatch.setenv("MW4AGENT_IS_ENC", val)
+        monkeypatch.setenv("ORBIT_IS_ENC", val)
         assert is_encryption_enabled() is True
 

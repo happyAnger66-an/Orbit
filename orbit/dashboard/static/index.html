@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Orbit Dashboard</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+      /* Default: light */
+      :root {
+        color-scheme: light;
+        --bg: #f1f5f9;
+        --bg-body: radial-gradient(circle at top, #e2e8f0 0, #f8fafc 40%, #f1f5f9 100%);
+        --panel: #ffffff;
+        --panel-border: rgba(148, 163, 184, 0.4);
+        --panel-header-border: rgba(148, 163, 184, 0.35);
+        --accent: #0284c7;
+        --accent-soft: rgba(2, 132, 199, 0.12);
+        --border: rgba(100, 116, 139, 0.4);
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --danger: #dc2626;
+        --radius-lg: 14px;
+        --radius-md: 10px;
+        --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.12);
+        --status-bg: rgba(241, 245, 249, 0.9);
+        --messages-bg: #f8fafc;
+        --messages-border: rgba(148, 163, 184, 0.35);
+        --msg-user-bg: rgba(2, 132, 199, 0.08);
+        --msg-user-border: rgba(2, 132, 199, 0.35);
+        --msg-assistant-bg: #f1f5f9;
+        --msg-assistant-border: rgba(148, 163, 184, 0.35);
+        --input-bg: #ffffff;
+        --input-border: rgba(100, 116, 139, 0.45);
+        --input-focus-border: rgba(2, 132, 199, 0.6);
+        --meta-item-bg: #f8fafc;
+        --meta-item-border: rgba(148, 163, 184, 0.35);
+        --meta-badge-bg: #f1f5f9;
+        --event-lifecycle: #0284c7;
+        --event-assistant: #059669;
+        --event-tool: #d97706;
+        --title-mark-inner: radial-gradient(circle at 30% 0, rgba(248, 250, 252, 0.9), transparent 52%),
+          radial-gradient(circle at 75% 75%, rgba(241, 245, 249, 0.95), #e2e8f0 72%);
+      }
+
+      [data-theme="soft-dark"] {
+        color-scheme: dark;
+        --bg: #1e293b;
+        --bg-body: radial-gradient(circle at top, #334155 0, #1e293b 45%, #0f172a 100%);
+        --panel: #334155;
+        --panel-border: rgba(148, 163, 184, 0.35);
+        --panel-header-border: rgba(51, 65, 85, 0.9);
+        --accent: #38bdf8;
+        --accent-soft: rgba(56, 189, 248, 0.15);
+        --border: rgba(148, 163, 184, 0.35);
+        --text-main: #e2e8f0;
+        --text-muted: #94a3b8;
+        --danger: #f87171;
+        --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.5);
+        --status-bg: rgba(30, 41, 59, 0.9);
+        --messages-bg: rgba(30, 41, 59, 0.85);
+        --messages-border: rgba(51, 65, 85, 0.9);
+        --msg-user-bg: rgba(56, 189, 248, 0.1);
+        --msg-user-border: rgba(56, 189, 248, 0.4);
+        --msg-assistant-bg: rgba(30, 41, 59, 0.9);
+        --msg-assistant-border: rgba(148, 163, 184, 0.35);
+        --input-bg: rgba(30, 41, 59, 0.9);
+        --input-border: rgba(148, 163, 184, 0.5);
+        --input-focus-border: rgba(56, 189, 248, 0.7);
+        --meta-item-bg: rgba(30, 41, 59, 0.85);
+        --meta-item-border: rgba(51, 65, 85, 0.9);
+        --meta-badge-bg: rgba(30, 41, 59, 0.9);
+        --event-lifecycle: #38bdf8;
+        --event-assistant: #34d399;
+        --event-tool: #fbbf24;
+        --title-mark-inner: radial-gradient(circle at 30% 0, rgba(248, 250, 252, 0.5), transparent 52%),
+          radial-gradient(circle at 75% 75%, rgba(30, 41, 59, 0.95), #1e293b 72%);
+      }
+
+      [data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #050816;
+        --bg-body: radial-gradient(circle at top, #0f172a 0, #020617 38%, #000 100%);
+        --panel: #0f172a;
+        --panel-border: rgba(148, 163, 184, 0.45);
+        --panel-header-border: rgba(30, 64, 175, 0.6);
+        --accent: #38bdf8;
+        --accent-soft: rgba(56, 189, 248, 0.12);
+        --border: rgba(148, 163, 184, 0.35);
+        --text-main: #e5e7eb;
+        --text-muted: #9ca3af;
+        --danger: #f97373;
+        --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.85);
+        --status-bg: rgba(15, 23, 42, 0.8);
+        --messages-bg: rgba(15, 23, 42, 0.9);
+        --messages-border: rgba(51, 65, 85, 0.9);
+        --msg-user-bg: rgba(56, 189, 248, 0.08);
+        --msg-user-border: rgba(56, 189, 248, 0.4);
+        --msg-assistant-bg: rgba(15, 23, 42, 0.9);
+        --msg-assistant-border: rgba(148, 163, 184, 0.35);
+        --input-bg: rgba(15, 23, 42, 0.92);
+        --input-border: rgba(148, 163, 184, 0.55);
+        --input-focus-border: rgba(56, 189, 248, 0.8);
+        --meta-item-bg: rgba(15, 23, 42, 0.85);
+        --meta-item-border: rgba(51, 65, 85, 0.85);
+        --meta-badge-bg: rgba(15, 23, 42, 0.9);
+        --event-lifecycle: #38bdf8;
+        --event-assistant: #34d399;
+        --event-tool: #fbbf24;
+        --title-mark-inner: radial-gradient(circle at 30% 0, rgba(248, 250, 252, 0.7), transparent 52%),
+          radial-gradient(circle at 75% 75%, rgba(15, 23, 42, 0.9), #020617 72%);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        background: var(--bg-body);
+        color: var(--text-main);
+        min-height: 100vh;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+      }
+
+      .shell {
+        width: 100%;
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 20px 16px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-height: 100vh;
+      }
+
+      .header {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .title-mark {
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        background: conic-gradient(from 180deg, #38bdf8, #6366f1, #22c55e, #38bdf8);
+        padding: 2px;
+      }
+
+      .title-mark-inner {
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--title-mark-inner);
+      }
+
+      .title-text-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .title-icon {
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .title-text-sub {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--status-bg);
+        border: 1px solid var(--border);
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+      }
+
+      .status-dot.ok {
+        background: #22c55e;
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+      }
+
+      .status-dot.err {
+        background: var(--danger);
+        box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.3);
+      }
+
+      .status-label {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .lang-switcher {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+      }
+
+      .lang-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+      }
+
+      .lang-btn:hover {
+        color: var(--text-main);
+        background: var(--accent-soft);
+      }
+
+      .lang-btn.active {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .lang-sep {
+        color: var(--text-muted);
+        opacity: 0.6;
+      }
+
+      .theme-switcher {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .theme-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .theme-btn:hover {
+        color: var(--text-main);
+        background: var(--accent-soft);
+      }
+
+      .theme-btn.active {
+        color: var(--accent);
+      }
+
+      .status-url {
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .main {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.1fr);
+        gap: 16px;
+        flex: 1;
+        min-height: 0;
+        align-items: start;
+      }
+
+      @media (max-width: 880px) {
+        .main {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .panel {
+        border-radius: var(--radius-lg);
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        box-shadow: var(--shadow-soft);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .panel-header {
+        padding: 14px 16px 10px;
+        border-bottom: 1px solid var(--panel-header-border);
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .panel-title {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--text-main);
+      }
+
+      .panel-subtitle {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .main > .panel:first-child {
+        min-height: 50vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .main > .panel:first-child .panel-header {
+        flex-shrink: 0;
+      }
+
+      .chat-body {
+        padding: 10px 14px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .messages {
+        flex: 1;
+        min-height: 50vh;
+        max-height: 75vh;
+        overflow: auto;
+        padding: 8px 8px 4px;
+        border-radius: var(--radius-md);
+        background: var(--messages-bg);
+        border: 1px solid var(--messages-border);
+      }
+
+      .msg {
+        margin-bottom: 8px;
+        padding: 7px 9px;
+        border-radius: 11px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .msg-user {
+        background: var(--msg-user-bg);
+        border: 1px solid var(--msg-user-border);
+      }
+
+      .msg-assistant {
+        background: var(--msg-assistant-bg);
+        border: 1px solid var(--msg-assistant-border);
+      }
+
+      .msg-meta {
+        font-size: 10px;
+        color: var(--text-muted);
+        margin-bottom: 3px;
+      }
+
+      .msg-step {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+        font-style: italic;
+      }
+
+      .msg-reasoning {
+        display: none;
+        font-size: 12px;
+        color: var(--text-muted);
+        background: var(--bg-subtle, rgba(0,0,0,0.04));
+        border-left: 3px solid var(--border-muted, #ccc);
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        border-radius: 0 4px 4px 0;
+      }
+      .msg-body {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .chat-options {
+        margin-bottom: 8px;
+      }
+      .chat-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text-muted);
+        cursor: pointer;
+      }
+      .chat-option input { cursor: pointer; }
+
+      .chat-input-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 2px;
+      }
+
+      .chat-input {
+        flex: 1;
+        min-height: 40px;
+        max-height: 120px;
+        border-radius: 999px;
+        border: 1px solid var(--input-border);
+        padding: 10px 14px;
+        font-size: 13px;
+        color: var(--text-main);
+        background: var(--input-bg);
+        outline: none;
+        resize: none;
+      }
+
+      .chat-input:focus {
+        border-color: var(--input-focus-border);
+        box-shadow: 0 0 0 1px var(--accent-soft);
+      }
+
+      .button-primary {
+        border-radius: 999px;
+        padding: 0 16px;
+        min-width: 80px;
+        border: none;
+        cursor: pointer;
+        background: linear-gradient(135deg, var(--accent), #6366f1);
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        box-shadow: 0 12px 24px rgba(37, 99, 235, 0.55);
+      }
+
+      .button-primary:disabled {
+        opacity: 0.5;
+        cursor: default;
+        box-shadow: none;
+      }
+
+      .button-primary span.icon {
+        font-size: 13px;
+      }
+
+      .meta-panel {
+        padding: 12px 14px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        font-size: 11px;
+      }
+
+      .meta-item {
+        padding: 9px 10px;
+        border-radius: 10px;
+        background: var(--meta-item-bg);
+        border: 1px solid var(--meta-item-border);
+      }
+
+      .meta-label {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        font-size: 10px;
+        margin-bottom: 3px;
+      }
+
+      .meta-value {
+        font-size: 11px;
+      }
+
+      .meta-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--meta-badge-bg);
+        border: 1px solid var(--border);
+      }
+
+      .footer-hint {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: right;
+      }
+
+      .panel-header-tabs {
+        display: flex;
+        gap: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+
+      .right-tabs {
+        display: flex;
+        gap: 2px;
+        padding: 0 4px 10px;
+      }
+
+      .right-tab {
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        background: none;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .right-tab:hover {
+        color: var(--text-main);
+        background: var(--accent-soft);
+      }
+
+      .right-tab.active {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .right-panel-content {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 12px 14px 14px;
+      }
+
+      .right-panel-content.hidden {
+        display: none;
+      }
+
+      .log-panel {
+        flex: 1;
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .log-list {
+        flex: 1;
+        min-height: 180px;
+        max-height: 50vh;
+        overflow: auto;
+        padding: 8px;
+        border-radius: var(--radius-md);
+        background: var(--messages-bg);
+        border: 1px solid var(--messages-border);
+        font-family: ui-monospace, "Cascadia Code", "SF Mono", monospace;
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .log-entry {
+        padding: 6px 8px;
+        margin-bottom: 4px;
+        border-radius: 6px;
+        background: var(--meta-item-bg);
+        border: 1px solid var(--meta-item-border);
+        border-left: 3px solid var(--accent);
+        word-break: break-all;
+      }
+
+      .log-entry:last-child {
+        margin-bottom: 0;
+      }
+
+      .log-entry-time {
+        color: var(--text-muted);
+        font-size: 10px;
+        margin-right: 8px;
+      }
+
+      .log-entry-stream {
+        font-weight: 600;
+        color: var(--accent);
+      }
+
+      .log-entry[data-stream="lifecycle"] {
+        border-left-color: var(--event-lifecycle);
+      }
+      .log-entry[data-stream="lifecycle"] .log-entry-stream {
+        color: var(--event-lifecycle);
+      }
+      .log-entry[data-stream="assistant"] {
+        border-left-color: var(--event-assistant);
+      }
+      .log-entry[data-stream="assistant"] .log-entry-stream {
+        color: var(--event-assistant);
+      }
+      .log-entry[data-stream="tool"] {
+        border-left-color: var(--event-tool);
+      }
+      .log-entry[data-stream="tool"] .log-entry-stream {
+        color: var(--event-tool);
+      }
+
+      .log-entry-run {
+        color: var(--text-muted);
+        font-size: 10px;
+      }
+
+      .log-empty {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-align: center;
+        padding: 24px 12px;
+      }
+
+      .log-empty.hidden {
+        display: none;
+      }
+
+      .agents-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .agents-table-wrap {
+        overflow: auto;
+        max-height: 55vh;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--messages-border);
+        background: var(--messages-bg);
+      }
+
+      .agents-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+
+      .agents-table th,
+      .agents-table td {
+        padding: 8px 10px;
+        text-align: left;
+        border-bottom: 1px solid var(--panel-header-border);
+        vertical-align: top;
+      }
+
+      .agents-table th {
+        position: sticky;
+        top: 0;
+        background: var(--panel);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 10px;
+        z-index: 1;
+      }
+
+      .agents-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .agents-table .path-cell {
+        font-family: ui-monospace, "Cascadia Code", "SF Mono", monospace;
+        word-break: break-all;
+        max-width: 0;
+      }
+
+      .agents-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .agents-badge.running {
+        background: rgba(34, 197, 94, 0.2);
+        color: #16a34a;
+        border: 1px solid rgba(34, 197, 94, 0.45);
+      }
+
+      [data-theme="soft-dark"] .agents-badge.running,
+      [data-theme="dark"] .agents-badge.running {
+        color: #4ade80;
+      }
+
+      .agents-badge.idle {
+        background: var(--meta-badge-bg);
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+      }
+
+      .agents-meta-line {
+        font-size: 10px;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="header">
+        <div class="title">
+          <div class="title-mark">
+            <div class="title-mark-inner"></div>
+          </div>
+          <div>
+            <div class="title-text-main"><span class="title-icon" aria-hidden="true">💪</span><span data-i18n="title">Orbit Dashboard</span></div>
+            <div class="title-text-sub" data-i18n="titleSub">Browser console · Gateway WebSocket + /rpc</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="theme-switcher" id="theme-switcher">
+            <button type="button" class="theme-btn" data-theme="light" title="Light">☀</button>
+            <button type="button" class="theme-btn" data-theme="soft-dark" title="Soft dark">◐</button>
+            <button type="button" class="theme-btn" data-theme="dark" title="Dark">◇</button>
+          </div>
+          <div class="lang-switcher" id="lang-switcher">
+            <button type="button" class="lang-btn" data-lang="zh-CN" title="中文">中文</button>
+            <span class="lang-sep">/</span>
+            <button type="button" class="lang-btn" data-lang="en" title="English">EN</button>
+          </div>
+          <div class="status" id="status-badge">
+            <div class="status-dot err" id="status-dot"></div>
+            <div class="status-label" id="status-label" data-i18n="statusDisconnected">DISCONNECTED</div>
+            <div class="status-url" id="status-url"></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title" data-i18n="chat">Chat</div>
+            <div class="panel-subtitle" data-i18n="chatSubtitle">Send a message via Gateway RPC and stream assistant events over WebSocket.</div>
+          </div>
+          <div class="chat-body">
+            <div class="messages" id="messages"></div>
+            <div class="chat-options">
+              <label class="chat-option">
+                <input type="checkbox" id="reasoning-checkbox" />
+                <span data-i18n="showReasoning">Show reasoning</span>
+              </label>
+            </div>
+            <div class="chat-input-row">
+              <textarea
+                id="chat-input"
+                class="chat-input"
+                rows="1"
+                data-i18n="placeholder"
+                data-i18n-placeholder
+                placeholder="Type a message to Orbit…"
+              ></textarea>
+              <button class="button-primary" id="send-btn">
+                <span class="icon">➤</span>
+                <span data-i18n="send">Send</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel right-panel">
+          <div class="panel-header panel-header-tabs">
+            <div class="right-tabs">
+              <button type="button" class="right-tab active" data-tab="gateway" data-i18n="gateway">Gateway</button>
+              <button type="button" class="right-tab" data-tab="agents" data-i18n="agents">Agents</button>
+              <button type="button" class="right-tab" data-tab="logs" data-i18n="events">Events</button>
+              <button type="button" class="right-tab" data-tab="config" data-i18n="config">Config</button>
+            </div>
+          </div>
+          <div id="right-panel-gateway" class="right-panel-content">
+            <div class="meta-panel">
+              <div class="meta-grid">
+                <div class="meta-item">
+                  <div class="meta-label" data-i18n="metaWs">WebSocket</div>
+                  <div class="meta-value" id="meta-ws" data-i18n="notConnected">Not connected</div>
+                </div>
+                <div class="meta-item">
+                  <div class="meta-label" data-i18n="metaRpc">RPC Endpoint</div>
+                  <div class="meta-value" id="meta-rpc">N/A</div>
+                </div>
+                <div class="meta-item">
+                  <div class="meta-label" data-i18n="metaLastRun">Last run</div>
+                  <div class="meta-value" id="meta-run">–</div>
+                </div>
+                <div class="meta-item">
+                  <div class="meta-label" data-i18n="metaEvents">Events</div>
+                  <div class="meta-value">
+                    <span class="meta-badge"><span id="meta-events-total">0</span> <span id="meta-events-unit" data-i18n="total">total</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="footer-hint" data-i18n="footerHint">
+                This is a minimal skeleton. You can evolve it into a full Control UI (sessions, channels, skills, cron, etc.).
+              </div>
+            </div>
+          </div>
+          <div id="right-panel-agents" class="right-panel-content hidden">
+            <div class="log-panel">
+              <div class="agents-toolbar">
+                <span style="font-size:12px; color: var(--text-muted);" data-i18n="agentsSubtitle">Per-agent directories and Gateway run status.</span>
+                <button type="button" id="agents-refresh" class="lang-btn" data-i18n="refresh">Refresh</button>
+              </div>
+              <div class="agents-table-wrap">
+                <table class="agents-table" id="agents-table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="colAgentId">Agent ID</th>
+                      <th data-i18n="colRunStatus">Run status</th>
+                      <th data-i18n="colPaths">Directories</th>
+                    </tr>
+                  </thead>
+                  <tbody id="agents-tbody"></tbody>
+                </table>
+              </div>
+              <div class="log-empty" id="agents-empty" data-i18n="agentsEmpty">No agents loaded.</div>
+            </div>
+          </div>
+          <div id="right-panel-logs" class="right-panel-content hidden">
+            <div class="log-panel">
+              <div class="log-list" id="log-list"></div>
+              <div class="log-empty" id="log-empty" data-i18n="noEvents">No events yet.</div>
+            </div>
+          </div>
+          <div id="right-panel-config" class="right-panel-content hidden">
+            <div class="log-panel">
+              <div class="meta-panel">
+                <div class="meta-grid">
+                  <div class="meta-item">
+                    <div class="meta-label" data-i18n="configSubtitle">Effective tools policy and raw tools config.</div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; margin: 10px 0;">
+                <div id="config-sections" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+                <button type="button" id="config-refresh" class="lang-btn" data-i18n="refresh">Refresh</button>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center; margin-bottom: 8px;">
+                <span style="font-size:12px; color: var(--text-muted);" data-i18n="configCurrent">Current section</span>
+                <span id="config-current" class="meta-badge">–</span>
+                <span id="config-save-status" style="font-size:12px; color: var(--text-muted);"></span>
+                <button type="button" id="config-save" class="lang-btn" data-i18n="save">Save</button>
+              </div>
+              <textarea id="config-editor" style="width:100%; min-height: 340px; resize: vertical; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px;"></textarea>
+              <div class="log-empty" id="config-empty" data-i18n="noConfig">No config loaded.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+  </html>
+

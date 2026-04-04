@@ -1,4 +1,4 @@
-# MW4Agent MemoryIndex / 混合检索 / 多后端 / 会话增量同步 实现计划
+# Orbit MemoryIndex / 混合检索 / 多后端 / 会话增量同步 实现计划
 
 本文用于跟踪 “对齐 OpenClaw Memory 短期记忆能力”的落地计划，主要围绕：
 
@@ -38,7 +38,7 @@
             "apiKey": ""
           },
           "store": {
-            "path": "~/.mw4agent/agents/{agentId}/memory/index.sqlite"
+            "path": "~/.orbit/agents/{agentId}/memory/index.sqlite"
           },
           "chunking": {
             "tokens": 512,
@@ -78,7 +78,7 @@
     - 在 `docs/manuals/configuration.md` 里增加 `memory` 段的配置说明（标注：目前大部分能力为预留，将逐步启用）。
 
 - **0.2 抽象 Memory 后端接口（不改变现有 search 行为）**
-  - 新建 `mw4agent/memory/backend.py`：
+  - 新建 `orbit/memory/backend.py`：
     - 定义接口/抽象类 `MemoryBackend`：
       - `search(query: str, *, session_id: Optional[str], agent_id: Optional[str], max_results: int, **opts) -> List[Dict]`
       - `read_file(path_or_id: str) -> str`
@@ -86,7 +86,7 @@
       - `note_session_delta(session_id: str, *, bytes_delta: int, messages_delta: int) -> None`（Phase 2 使用）
       - `status() -> Dict[str, Any]`
     - 提供一个 **StubBackend**：
-      - 内部直接调用现有 `mw4agent/memory/search.py` 的实现：
+      - 内部直接调用现有 `orbit/memory/search.py` 的实现：
         - `search(...)`：关键字+workspace/sessions 搜索（当前逻辑）
         - `read_file(...)`：现有 read_file 逻辑
       - `sync`/`note_session_delta`/`status` 先实现成空或简单统计。
@@ -100,8 +100,8 @@
 **目标**：在不引入 embedding provider 的前提下，先把“统一索引 + 文件源”这层做起来，验证索引生命周期与 API 形状。
 
 - **1.1 SQLite 索引结构设计**
-  - 新建 `mw4agent/memory/index.py`：
-    - 创建/管理每 agent 的 index：`~/.mw4agent/agents/<agentId>/memory/index.sqlite`。
+  - 新建 `orbit/memory/index.py`：
+    - 创建/管理每 agent 的 index：`~/.orbit/agents/<agentId>/memory/index.sqlite`。
     - 表结构（初版）：
       - `chunks`：
         - `id`（PK）
@@ -143,11 +143,11 @@
 **目标**：把现有 session transcript 的“短期记忆”增量写入 MemoryIndex，使其在统一索引里可查，并按时间字段为后续时间衰减做准备。
 
 - **2.1 Transcript → MemoryIndex 的 Delta 通路**
-  - 在 `mw4agent/agents/session/transcript.py` 中：
+  - 在 `orbit/agents/session/transcript.py` 中：
     - 在 `append_messages(...)`、`append_compaction(...)`、`append_custom(...)` 末尾调用一个 hook：
       - 如：`note_transcript_delta(agent_id, session_id, messages=[...])`。
   - 在 Memory 层增加全局/单例 Router：
-    - `from mw4agent.memory.backend import get_memory_backend`
+    - `from orbit.memory.backend import get_memory_backend`
     - `note_transcript_delta(...)` 内部调用 `get_memory_backend().note_session_delta(...)`。
 
 - **2.2 sessions chunking 策略**
@@ -179,7 +179,7 @@
 **目标**：实现 OpenClaw 风格的“向量 + FTS 混合检索 + MMR + Temporal Decay”，在本地单机上先打通一条 embedding pipeline。
 
 - **3.1 Embedding Provider 抽象**
-  - 新建 `mw4agent/memory/embedding.py`：
+  - 新建 `orbit/memory/embedding.py`：
     - 接口：
       - `embed_texts(texts: list[str]) -> list[list[float]]`
     - 配置来源：`memory.provider/model/remote.*`：
@@ -231,7 +231,7 @@
 **目标**：在本地 MemoryIndexManager 之外，增加远端 Memory 后端，支持远程 QMD 或其他向量引擎，并实现 fallback。
 
 - **4.1 MemorySearchManager & fallback**
-  - 新建 `mw4agent/memory/search_manager.py`：
+  - 新建 `orbit/memory/search_manager.py`：
     - `get_memory_backend(config, agent_id)`：
       - 若 `memory.remote.backend == "qmd"`：
         - 构造 `RemoteMemoryBackend`，调用远端：
@@ -257,10 +257,10 @@
 ## Phase 5：CLI / Dashboard / 文档收尾
 
 - **5.1 CLI 支持**
-  - 新增 `mw4agent memory` 子命令（类似 OpenClaw memory-cli）：
-    - `mw4agent memory sync`：手动触发全量索引构建/更新。
-    - `mw4agent memory status`：展示当前 MemoryIndex 状态（文档数、sessions 数、最后同步时间等）。
-    - `mw4agent memory search --query ...`：从命令行验证 MemoryBackend.search 行为（方便调试）。
+  - 新增 `orbit memory` 子命令（类似 OpenClaw memory-cli）：
+    - `orbit memory sync`：手动触发全量索引构建/更新。
+    - `orbit memory status`：展示当前 MemoryIndex 状态（文档数、sessions 数、最后同步时间等）。
+    - `orbit memory search --query ...`：从命令行验证 MemoryBackend.search 行为（方便调试）。
 
 - **5.2 Dashboard 集成**
   - Dashboard 右侧增加 “Memory” 或在 Config 里增加 Memory section：

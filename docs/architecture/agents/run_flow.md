@@ -1,6 +1,6 @@
-# MW4Agent `AgentRunner` 执行流程（run flow）
+# Orbit `AgentRunner` 执行流程（run flow）
 
-本文档描述当前 `mw4agent/agents/runner/runner.py` 中 `AgentRunner` 的实际执行流程，用于帮助理解：一轮 agent 调用如何串行化、如何加载/修复 session 历史、何时触发自动 compaction、以及工具调用循环如何运行与落盘。
+本文档描述当前 `orbit/agents/runner/runner.py` 中 `AgentRunner` 的实际执行流程，用于帮助理解：一轮 agent 调用如何串行化、如何加载/修复 session 历史、何时触发自动 compaction、以及工具调用循环如何运行与落盘。
 
 ---
 

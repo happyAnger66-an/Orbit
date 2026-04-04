@@ -1,0 +1,44 @@
+# Orbit Gateway systemd unit (align with OpenClaw openclaw-gateway.service usage).
+#
+# Install:
+#   sudo cp scripts/systemd/orbit-gateway.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable orbit-gateway.service
+#   sudo systemctl start orbit-gateway.service
+#
+# Optional override (create /etc/default/orbit-gateway or use systemctl edit):
+#   ORBIT_GATEWAY_BIND=0.0.0.0
+#   ORBIT_GATEWAY_PORT=18790
+#   ORBIT_STATE_DIR=/var/lib/orbit
+#   ORBIT_SESSION_FILE=orbit.sessions.json
+#
+# Then in [Service] add:
+#   EnvironmentFile=-/etc/default/orbit-gateway
+#   ExecStart=... --bind ${ORBIT_GATEWAY_BIND} --port ${ORBIT_GATEWAY_PORT} --session-file ${ORBIT_STATE_DIR}/${ORBIT_SESSION_FILE}
+# (systemd does not expand variables in ExecStart; use a wrapper script or override ExecStart with full path.)
+
+[Unit]
+Description=Orbit Gateway (WebSocket + HTTP RPC)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as dedicated user (create with: useradd -r -s /bin/false orbit)
+User=orbit
+Group=orbit
+# Optional: load env from file (bind/port/session-file can be set there)
+EnvironmentFile=-/etc/default/orbit-gateway
+# State dir for session file and config lookup
+WorkingDirectory=/var/lib/orbit
+# Gateway listen address and port (default 0.0.0.0:18790)
+ExecStart=/usr/bin/python3 -m orbit gateway run --bind 0.0.0.0 --port 18790 --session-file orbit.sessions.json
+Restart=on-failure
+RestartSec=10
+# Log to journal; stdout/stderr go to systemd
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orbit-gateway
+
+[Install]
+WantedBy=multi-user.target

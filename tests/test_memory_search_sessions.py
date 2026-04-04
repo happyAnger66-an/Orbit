@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from mw4agent.memory.search import search, read_file
-from mw4agent.agents.session.transcript import resolve_session_transcript_path, append_messages
+from orbit.memory.search import search, read_file
+from orbit.agents.session.transcript import resolve_session_transcript_path, append_messages
 
 
 def test_memory_search_includes_sessions(monkeypatch, tmp_path: Path) -> None:
     # Ensure transcripts are written under an isolated state dir.
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
 
     # Workspace can be empty; we are testing sessions source.
     workspace_dir = str(tmp_path / "workspace")

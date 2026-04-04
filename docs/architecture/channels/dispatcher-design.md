@@ -2,7 +2,7 @@
 
 ## 问题：Console Channel 直接调用 AgentRunner
 
-在 MW4Agent 的初始实现中，`ChannelDispatcher` 直接调用 `AgentRunner.run()`，这与 OpenClaw 的设计不一致。
+在 Orbit 的初始实现中，`ChannelDispatcher` 直接调用 `AgentRunner.run()`，这与 OpenClaw 的设计不一致。
 
 ### OpenClaw 的设计
 
@@ -13,16 +13,16 @@ OpenClaw 中，channels 通过 Gateway RPC 调用 agent：
 3. **幂等性**：Gateway 提供 dedupe 机制
 4. **监控**：Gateway 维护运行状态和快照
 
-### MW4Agent 的改进
+### Orbit 的改进
 
-MW4Agent 的 `ChannelDispatcher` 现在支持两种模式：
+Orbit 的 `ChannelDispatcher` 现在支持两种模式：
 
 #### 模式 1：通过 Gateway RPC（对齐 OpenClaw）
 
 ```python
-from mw4agent.channels.dispatcher import ChannelDispatcher, ChannelRuntime
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.runner.runner import AgentRunner
+from orbit.channels.dispatcher import ChannelDispatcher, ChannelRuntime
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.runner.runner import AgentRunner
 
 # 配置 gateway_base_url
 runtime = ChannelRuntime(
@@ -203,7 +203,7 @@ runtime = ChannelRuntime(
 
 1. **启动 Gateway**：
    ```bash
-   mw4agent gateway run --bind 127.0.0.1 --port 18790
+   orbit gateway run --bind 127.0.0.1 --port 18790
    ```
 
 2. **修改 ChannelRuntime 配置**：
@@ -226,6 +226,6 @@ runtime = ChannelRuntime(
 
 ## 相关文档
 
-- [Gateway 架构](gateway/mw4agent-gateway-agent-interaction.md)
-- [Channels 实现](channels/mw4agent-channels-implementation.md)
+- [Gateway 架构](gateway/orbit-gateway-agent-interaction.md)
+- [Channels 实现](channels/orbit-channels-implementation.md)
 - [OpenClaw Channels 架构](channels/openclaw-channels-architecture.md)

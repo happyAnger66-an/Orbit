@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.skills import SkillManager, get_default_skill_manager
-from mw4agent.crypto import EncryptionConfigError
+from orbit.skills import SkillManager, get_default_skill_manager
+from orbit.crypto import EncryptionConfigError
 
 
 @pytest.fixture
@@ -28,8 +28,8 @@ def skill_manager(temp_skills_dir: Path) -> SkillManager:
 def secret_key(monkeypatch) -> str:
     """Set up a test secret key and ensure encryption is enabled."""
     key = base64.b64encode(os.urandom(32)).decode("ascii")
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", key)
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "1")  # 确保加密开启，不受外部环境影响
+    monkeypatch.setenv("ORBIT_SECRET_KEY", key)
+    monkeypatch.setenv("ORBIT_IS_ENC", "1")  # 确保加密开启，不受外部环境影响
     return key
 
 
@@ -53,7 +53,7 @@ def test_skill_manager_write_read_encrypted(skill_manager: SkillManager, secret_
     skill_path = skill_manager._get_skill_path("file_operations")
     assert skill_path.exists()
     raw_content = skill_path.read_bytes()
-    assert raw_content.startswith(b"MW4AGENT_ENC_v1\n")
+    assert raw_content.startswith(b"ORBIT_ENC_v1\n")
 
     # Read skill (should decrypt automatically)
     loaded_data = skill_manager.read_skill("file_operations")
@@ -111,9 +111,9 @@ def test_skill_manager_plaintext_fallback(skill_manager: SkillManager, monkeypat
     """Test fallback to plaintext when encryption is not configured."""
     # Remove encryption key to force plaintext fallback
     # Also need to clear the cached store
-    import mw4agent.crypto.secure_io
-    monkeypatch.delenv("MW4AGENT_SECRET_KEY", raising=False)
-    monkeypatch.setattr(mw4agent.crypto.secure_io, "_default_store", None)
+    import orbit.crypto.secure_io
+    monkeypatch.delenv("ORBIT_SECRET_KEY", raising=False)
+    monkeypatch.setattr(orbit.crypto.secure_io, "_default_store", None)
     
     skill_data = {"name": "Plaintext Skill"}
 
@@ -124,7 +124,7 @@ def test_skill_manager_plaintext_fallback(skill_manager: SkillManager, monkeypat
     skill_path = skill_manager._get_skill_path("plaintext_skill")
     assert skill_path.exists()
     raw_content = skill_path.read_bytes()
-    assert not raw_content.startswith(b"MW4AGENT_ENC_v1\n"), f"File should be plaintext but starts with magic header: {raw_content[:50]}"
+    assert not raw_content.startswith(b"ORBIT_ENC_v1\n"), f"File should be plaintext but starts with magic header: {raw_content[:50]}"
 
     # Read should work (fallback enabled by default)
     loaded_data = skill_manager.read_skill("plaintext_skill")
@@ -134,7 +134,7 @@ def test_skill_manager_plaintext_fallback(skill_manager: SkillManager, monkeypat
 def test_get_default_skill_manager(tmp_path: Path, monkeypatch, secret_key: str) -> None:
     """Test get_default_skill_manager returns a singleton."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    import mw4agent.skills.manager as skill_mod
+    import orbit.skills.manager as skill_mod
     skill_mod._default_skill_manager = None  # type: ignore[attr-defined]
 
     mgr1 = get_default_skill_manager()

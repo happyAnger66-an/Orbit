@@ -1,6 +1,6 @@
 """Tests for config secret redaction and merge-on-save."""
 
-from mw4agent.config.redact import (
+from orbit.config.redact import (
     REDACTED_SECRET_PLACEHOLDER,
     is_redacted_placeholder,
     merge_preserve_redacted_secrets,

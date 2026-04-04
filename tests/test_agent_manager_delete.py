@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.agent_manager import AgentManager
-from mw4agent.config.paths import DEFAULT_AGENT_ID, resolve_agent_dir
+from orbit.agents.agent_manager import AgentManager
+from orbit.config.paths import DEFAULT_AGENT_ID, resolve_agent_dir
 
 
 def test_delete_removes_agent_dir(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     mgr = AgentManager()
     mgr.get_or_create("foo")
     agent_path = Path(resolve_agent_dir("foo"))
@@ -24,7 +24,7 @@ def test_delete_removes_agent_dir(tmp_path, monkeypatch) -> None:
 
 
 def test_delete_main_without_force_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     mgr = AgentManager()
     mgr.ensure_main()
     with pytest.raises(ValueError, match="main"):
@@ -32,7 +32,7 @@ def test_delete_main_without_force_raises(tmp_path, monkeypatch) -> None:
 
 
 def test_delete_main_with_force(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     mgr = AgentManager()
     mgr.ensure_main()
     main_path = Path(resolve_agent_dir("main"))
@@ -41,7 +41,7 @@ def test_delete_main_with_force(tmp_path, monkeypatch) -> None:
 
 
 def test_delete_missing_returns_false(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     mgr = AgentManager()
     assert mgr.delete("nonexistent-agent-xyz") is False
 
@@ -51,8 +51,8 @@ def test_cli_agent_del_invocation(tmp_path, monkeypatch) -> None:
     import click
     from click.testing import CliRunner
 
-    from mw4agent.cli.agent.register import register_agent_cli
-    from mw4agent.cli.context import create_program_context
+    from orbit.cli.agent.register import register_agent_cli
+    from orbit.cli.context import create_program_context
 
     def _build_cli() -> click.Group:
         @click.group()
@@ -62,7 +62,7 @@ def test_cli_agent_del_invocation(tmp_path, monkeypatch) -> None:
         register_agent_cli(cli, create_program_context("0.0.0"))
         return cli
 
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     mgr = AgentManager()
     mgr.get_or_create("bar")
     assert Path(resolve_agent_dir("bar")).exists()

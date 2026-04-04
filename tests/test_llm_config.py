@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mw4agent.agents.types import AgentRunParams
-from mw4agent.config import ConfigManager, get_default_config_manager
-from mw4agent.llm.backends import (
+from orbit.agents.types import AgentRunParams
+from orbit.config import ConfigManager, get_default_config_manager
+from orbit.llm.backends import (
     _call_openai_chat_with_tools,
     _extract_text_and_reasoning_from_message,
     _normalize_thinking_level,
@@ -19,17 +19,17 @@ def test_llm_config_provider_and_model_precedence(monkeypatch, tmp_path: Path) -
     """Config-driven provider/model should be used when params/env are not set."""
     # Isolate config directory
     cfg_dir = tmp_path / "config"
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw_state"))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw_state"))
 
     # Reset default config manager singleton
-    import mw4agent.config.manager as cfg_mod
+    import orbit.config.manager as cfg_mod
 
     cfg_mod._default_config_manager = None  # type: ignore[attr-defined]
 
     # Ensure env does not override
-    monkeypatch.delenv("MW4AGENT_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("MW4AGENT_LLM_MODEL", raising=False)
+    monkeypatch.delenv("ORBIT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("ORBIT_LLM_MODEL", raising=False)
 
     mgr: ConfigManager = get_default_config_manager()
     mgr.write_config(
@@ -135,9 +135,9 @@ def test_llm_max_tokens_and_context_window_from_config(monkeypatch, tmp_path: Pa
 
     # Isolate config directory
     cfg_dir = tmp_path / "config"
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw_state"))
-    import mw4agent.config.manager as cfg_mod
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw_state"))
+    import orbit.config.manager as cfg_mod
 
     cfg_mod._default_config_manager = None  # type: ignore[attr-defined]
     mgr: ConfigManager = get_default_config_manager()

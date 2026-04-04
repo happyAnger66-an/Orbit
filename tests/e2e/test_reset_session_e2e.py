@@ -46,13 +46,13 @@ def _rpc_call(base_url: str, method: str, params: dict, timeout_s: float = 5.0) 
 
 def test_reset_mints_new_session_id_and_reuses_latest(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "0")
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
+    monkeypatch.setenv("ORBIT_IS_ENC", "0")
 
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    (cfg_dir / "mw4agent.json").write_text(
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    (cfg_dir / "orbit.json").write_text(
         json.dumps({"llm": {"provider": "echo", "model_id": "echo"}}),
         encoding="utf-8",
     )
@@ -61,7 +61,7 @@ def test_reset_mints_new_session_id_and_reuses_latest(tmp_path: Path, monkeypatc
     base_url = f"http://127.0.0.1:{port}"
 
     def _run_gateway() -> None:
-        from mw4agent.gateway.server import create_app
+        from orbit.gateway.server import create_app
 
         app = create_app(session_file="")  # multi-agent mode
         config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")

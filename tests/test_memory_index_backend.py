@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from mw4agent.memory.backend import (
+from orbit.memory.backend import (
     get_memory_backend,
     LocalIndexBackend,
     reset_memory_backend_singleton,
@@ -34,11 +34,11 @@ def _count_chunks(*, db_path: str, source: str) -> int:
 
 
 def test_local_index_backend_search_uses_sqlite_index(tmp_path, monkeypatch):
-    # Redirect state/config dirs to tmp so we don't touch real ~/.mw4agent.
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    # Redirect state/config dirs to tmp so we don't touch real ~/.orbit.
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
 
     # Enable memory section in root config.
     root_cfg = {
@@ -46,7 +46,7 @@ def test_local_index_backend_search_uses_sqlite_index(tmp_path, monkeypatch):
             "enabled": True,
         }
     }
-    (cfg_dir / "mw4agent.json").write_text(json.dumps(root_cfg), encoding="utf-8")
+    (cfg_dir / "orbit.json").write_text(json.dumps(root_cfg), encoding="utf-8")
 
     # Create a fake workspace with MEMORY.md
     ws = tmp_path / "ws"
@@ -64,18 +64,18 @@ def test_local_index_backend_search_uses_sqlite_index(tmp_path, monkeypatch):
 
 
 def test_local_index_backend_search_includes_session_transcript(tmp_path, monkeypatch):
-    from mw4agent.agents.session.memory_index_context import (
+    from orbit.agents.session.memory_index_context import (
         memory_index_workspace_reset,
         memory_index_workspace_set,
     )
-    from mw4agent.agents.session.transcript import append_messages, resolve_session_transcript_path
+    from orbit.agents.session.transcript import append_messages, resolve_session_transcript_path
 
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
 
-    (cfg_dir / "mw4agent.json").write_text(json.dumps({"memory": {"enabled": True}}), encoding="utf-8")
+    (cfg_dir / "orbit.json").write_text(json.dumps({"memory": {"enabled": True}}), encoding="utf-8")
 
     ws = tmp_path / "ws"
     ws.mkdir(parents=True, exist_ok=True)
@@ -111,7 +111,7 @@ def test_local_index_backend_search_includes_session_transcript(tmp_path, monkey
 
 
 def test_search_index_includes_timestamps_and_session_id(tmp_path):
-    from mw4agent.memory.index import search_index, upsert_chunk
+    from orbit.memory.index import search_index, upsert_chunk
 
     db_path = str(tmp_path / "idx.sqlite")
     upsert_chunk(
@@ -128,18 +128,18 @@ def test_search_index_includes_timestamps_and_session_id(tmp_path):
 
 
 def test_local_index_session_sync_threshold_skips_eager_chunk(tmp_path, monkeypatch):
-    from mw4agent.agents.session.memory_index_context import (
+    from orbit.agents.session.memory_index_context import (
         memory_index_workspace_reset,
         memory_index_workspace_set,
     )
-    from mw4agent.agents.session.transcript import append_messages, resolve_session_transcript_path
+    from orbit.agents.session.transcript import append_messages, resolve_session_transcript_path
 
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
 
-    (cfg_dir / "mw4agent.json").write_text(
+    (cfg_dir / "orbit.json").write_text(
         json.dumps(
             {
                 "memory": {
@@ -187,11 +187,11 @@ def test_local_index_session_sync_threshold_skips_eager_chunk(tmp_path, monkeypa
 
 
 def test_local_index_sync_invalidates_workspace_index(tmp_path, monkeypatch):
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    (cfg_dir / "mw4agent.json").write_text(json.dumps({"memory": {"enabled": True}}), encoding="utf-8")
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    (cfg_dir / "orbit.json").write_text(json.dumps({"memory": {"enabled": True}}), encoding="utf-8")
 
     ws = tmp_path / "ws"
     ws.mkdir(parents=True, exist_ok=True)

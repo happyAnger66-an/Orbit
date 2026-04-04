@@ -1,6 +1,6 @@
-# MW4Agent AgentRunner 与 LLM 交互实现说明
+# Orbit AgentRunner 与 LLM 交互实现说明
 
-本文档说明 MW4Agent 中 `AgentRunner` 如何与 LLM 交互，设计参考 OpenClaw 的 `runEmbeddedPiAgent` / `runEmbeddedAttempt`，但实现做了简化。
+本文档说明 Orbit 中 `AgentRunner` 如何与 LLM 交互，设计参考 OpenClaw 的 `runEmbeddedPiAgent` / `runEmbeddedAttempt`，但实现做了简化。
 
 ## 1. 总体架构
 
@@ -18,9 +18,9 @@ AgentRunner.run(AgentRunParams)
 
 涉及文件：
 
-- `mw4agent/agents/runner/runner.py`
-- `mw4agent/agents/types.py`
-- `mw4agent/llm/backends.py`
+- `orbit/agents/runner/runner.py`
+- `orbit/agents/types.py`
+- `orbit/llm/backends.py`
 
 ## 2. AgentRunParams 与元数据
 
@@ -114,9 +114,9 @@ await self.event_stream.emit(
 
 2. **调用 LLM Backend**
 
-- 调用 `generate_reply(params)`，由 `mw4agent.llm.backends` 决定具体后端：
+- 调用 `generate_reply(params)`，由 `orbit.llm.backends` 决定具体后端：
   - 默认（无配置）：`echo` 后端（本地生成固定格式回复）
-  - 当 `MW4AGENT_LLM_PROVIDER=openai` 且存在 `OPENAI_API_KEY` 时：调用 OpenAI Chat Completions API
+  - 当 `ORBIT_LLM_PROVIDER=openai` 且存在 `OPENAI_API_KEY` 时：调用 OpenAI Chat Completions API
 
 返回值为：
 
@@ -174,7 +174,7 @@ return AgentRunResult(
 )
 ```
 
-## 5. LLM Backend 设计（mw4agent.llm.backends）
+## 5. LLM Backend 设计（orbit.llm.backends）
 
 ### 5.1 默认 echo 后端
 
@@ -194,7 +194,7 @@ usage = LLMUsage()
 
 当满足以下条件时启用：
 
-- `MW4AGENT_LLM_PROVIDER=openai`
+- `ORBIT_LLM_PROVIDER=openai`
 - 环境变量 `OPENAI_API_KEY` 已设置
 
 调用方式（简化版）：
@@ -217,10 +217,10 @@ body = {
 
 当前支持的环境变量：
 
-- `MW4AGENT_LLM_PROVIDER`：
+- `ORBIT_LLM_PROVIDER`：
   - `echo`（默认）→ 本地 echo 后端
   - `openai` → 使用 OpenAI Chat API
-- `MW4AGENT_LLM_MODEL`：
+- `ORBIT_LLM_MODEL`：
   - 默认：`gpt-4o-mini`（仅作为字符串标记）
 - `OPENAI_API_KEY`：
   - 使用 OpenAI 后端时必须设置
@@ -232,9 +232,9 @@ body = {
 `thinking_level` 的解析优先级（高到低）：
 
 1. `AgentRunParams.thinking_level`
-2. `~/.mw4agent/agents/<agentId>/agent.json` 的 `llm.thinking_level` / `llm.thinkingLevel`
-3. `~/.mw4agent/mw4agent.json` 的 `llm.thinking_level` / `llm.thinkingLevel`
-4. 环境变量 `MW4AGENT_LLM_THINKING_LEVEL`
+2. `~/orbit/agents/<agentId>/agent.json` 的 `llm.thinking_level` / `llm.thinkingLevel`
+3. `~/orbit/orbit.json` 的 `llm.thinking_level` / `llm.thinkingLevel`
+4. 环境变量 `ORBIT_LLM_THINKING_LEVEL`
 5. 默认 `off`
 
 支持值：`off` | `minimal` | `low` | `medium` | `high` | `xhigh` | `adaptive`（兼容：`on -> medium`）。
@@ -247,7 +247,7 @@ body = {
 | `vllm` / `aliyun-bailian` | `reasoning: { effort }` | 映射到 `minimal`/`low`/`medium`/`high`（`xhigh` 会降级为 `high`） |
 | 其他 provider | 不注入 | 保持兼容，不强加未知字段 |
 
-配置示例（`~/.mw4agent/mw4agent.json`）：
+配置示例（`~/orbit/orbit.json`）：
 
 ```json
 {
@@ -264,9 +264,9 @@ body = {
 ### 7.1 直接调用 AgentRunner
 
 ```python
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.types import AgentRunParams
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.types import AgentRunParams
 import asyncio
 
 async def main():
@@ -289,10 +289,10 @@ text: Agent (echo) reply: 你好，介绍一下你自己
 ### 7.2 启用 OpenAI 后端（示意）
 
 ```bash
-export MW4AGENT_LLM_PROVIDER=openai
-export MW4AGENT_LLM_MODEL=gpt-4o-mini
+export ORBIT_LLM_PROVIDER=openai
+export ORBIT_LLM_MODEL=gpt-4o-mini
 export OPENAI_API_KEY=sk-...
-python3 -m mw4agent channels console run
+python3 -m orbit channels console run
 ```
 
 此时 console 通道的回答将来自 OpenAI Chat API。
@@ -301,7 +301,7 @@ python3 -m mw4agent channels console run
 
 ## 8. 与 OpenClaw 的对比
 
-| 能力 | OpenClaw | MW4Agent（当前实现） |
+| 能力 | OpenClaw | Orbit（当前实现） |
 |------|----------|----------------------|
 | 运行封装 | `runEmbeddedPiAgent` + `runEmbeddedAttempt` | `AgentRunner.run` + `_execute_agent_turn` |
 | 多 provider 支持 | 统一在 `pi-agent-core` 内部抽象 | 通过 `generate_reply` 简化封装 |

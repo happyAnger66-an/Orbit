@@ -1,10 +1,10 @@
-# MW4Agent CLI 架构文档
+# Orbit CLI 架构文档
 
-本文档说明 MW4Agent CLI 的架构设计，参考 OpenClaw 的可扩展命令注册机制。
+本文档说明 Orbit CLI 的架构设计，参考 OpenClaw 的可扩展命令注册机制。
 
 ## 架构概述
 
-MW4Agent CLI 采用**命令注册表（Command Registry）**模式，类似于 OpenClaw 的 `command-registry.ts` 设计：
+Orbit CLI 采用**命令注册表（Command Registry）**模式，类似于 OpenClaw 的 `command-registry.ts` 设计：
 
 ```
 ┌─────────────────────────────────────────┐
@@ -187,14 +187,14 @@ get_registry().register_entry(models_entry)
 #### 3. 使用
 
 ```bash
-mw4agent models --help
-mw4agent models list
-mw4agent models add gpt-4
+orbit models --help
+orbit models list
+orbit models add gpt-4
 ```
 
 ## 与 OpenClaw 的对比
 
-| 特性 | OpenClaw (TypeScript) | MW4Agent (Python) |
+| 特性 | OpenClaw (TypeScript) | Orbit (Python) |
 |------|----------------------|-------------------|
 | 命令注册 | `coreEntries` 数组 | `CommandEntry` 类 |
 | 注册函数 | `async register()` | `register()` |

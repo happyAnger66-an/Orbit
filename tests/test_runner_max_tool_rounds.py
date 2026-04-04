@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.types import AgentRunParams
-from mw4agent.agents.tools.base import ToolResult
-from mw4agent.llm.backends import LLMUsage
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.types import AgentRunParams
+from orbit.agents.tools.base import ToolResult
+from orbit.llm.backends import LLMUsage
 
 
 @pytest.mark.asyncio
 async def test_tool_loop_max_rounds_forces_finalize_and_stop_reason(tmp_path: Path, monkeypatch) -> None:
-    import mw4agent.agents.runner.runner as runner_mod
+    import orbit.agents.runner.runner as runner_mod
 
     monkeypatch.setattr(runner_mod, "MAX_TOOL_ROUNDS", 2)
 

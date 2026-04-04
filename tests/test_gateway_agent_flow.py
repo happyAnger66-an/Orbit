@@ -1,4 +1,4 @@
-"""End-to-end smoke test for MW4Agent Gateway <-> Agent interaction.
+"""End-to-end smoke test for Orbit Gateway <-> Agent interaction.
 
 What it does (OpenClaw-inspired semantics):
 - Start gateway server on a free local port (subprocess)
@@ -65,13 +65,13 @@ def _wait_for_health(base_url: str, deadline_s: float = 8.0) -> dict:
 def main() -> int:
     port = _find_free_port()
     base_url = f"http://127.0.0.1:{port}"
-    session_file = "/tmp/mw4agent.test.gateway.sessions.json"
+    session_file = "/tmp/orbit.test.gateway.sessions.json"
 
     # Start gateway in a subprocess (uses CLI to match real invocation)
     cmd = [
         sys.executable,
         "-m",
-        "mw4agent",
+        "orbit",
         "gateway",
         "run",
         "--bind",

@@ -11,13 +11,13 @@ from starlette.testclient import TestClient
 
 @pytest.fixture()
 def gateway_client(tmp_path, monkeypatch):
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    (cfg_dir / "mw4agent.json").write_text(json.dumps({"llm": {"provider": "echo"}}), encoding="utf-8")
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    (cfg_dir / "orbit.json").write_text(json.dumps({"llm": {"provider": "echo"}}), encoding="utf-8")
 
-    from mw4agent.gateway.server import create_app
+    from orbit.gateway.server import create_app
 
     app = create_app(session_file="")
     with TestClient(app) as client:
@@ -76,7 +76,7 @@ def _write_main_session_with_transcript(*, state_root: Path, session_id: str) ->
 def test_agent_session_history_returns_messages_and_session_id(
     gateway_client: TestClient, tmp_path
 ) -> None:
-    state_root = tmp_path / ".mw4agent"
+    state_root = tmp_path / ".orbit"
     sid = "shist1"
     _write_main_session_with_transcript(state_root=state_root, session_id=sid)
 
@@ -103,7 +103,7 @@ def test_agent_session_history_falls_back_from_desktop_app_to_main_session_key(
     gateway_client: TestClient, tmp_path
 ) -> None:
     """Legacy RPC used default sessionKey 'main'; UI queries 'desktop-app' — history should still resolve."""
-    state_root = tmp_path / ".mw4agent"
+    state_root = tmp_path / ".orbit"
     sid = "slegacy-main"
     main_sessions = state_root / "agents" / "main" / "sessions"
     main_sessions.mkdir(parents=True, exist_ok=True)

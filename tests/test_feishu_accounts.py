@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mw4agent.channels.feishu_accounts import list_feishu_accounts
+from orbit.channels.feishu_accounts import list_feishu_accounts
 
 
 def test_list_feishu_accounts_legacy_flat() -> None:

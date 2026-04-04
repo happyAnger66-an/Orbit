@@ -1,6 +1,6 @@
 """Orchestration reply language normalization."""
 
-from mw4agent.gateway.orchestrator import _normalize_orch_reply_language
+from orbit.gateway.orchestrator import _normalize_orch_reply_language
 
 
 def test_normalize_orch_reply_language_maps_synonyms() -> None:

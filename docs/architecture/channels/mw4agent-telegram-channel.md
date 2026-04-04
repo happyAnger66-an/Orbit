@@ -1,11 +1,11 @@
-# MW4Agent Telegram 通道架构与实现
+# Orbit Telegram 通道架构与实现
 
-本文档说明 MW4Agent 中 Telegram 通道的架构设计与实现方式，基于 OpenClaw 的 Channels 模型（Dock + Plugin + Dispatcher），并结合 Telegram Bot API 做了 Python 化落地。
+本文档说明 Orbit 中 Telegram 通道的架构设计与实现方式，基于 OpenClaw 的 Channels 模型（Dock + Plugin + Dispatcher），并结合 Telegram Bot API 做了 Python 化落地。
 
 ## 1. 目标与能力边界
 
 - **目标**
-  - 将 Telegram Bot 的消息作为一个标准通道接入 MW4Agent；
+  - 将 Telegram Bot 的消息作为一个标准通道接入 Orbit；
   - 复用现有的 `ChannelDispatcher` → `AgentRunner` → 工具/LLM 流程；
   - 尽量保持实现“轻量、可扩展”，避免直接把业务逻辑写死在通道里。
 
@@ -18,7 +18,7 @@
 ## 2. 文件与依赖
 
 - 代码文件：
-  - `mw4agent/channels/plugins/telegram.py`
+  - `orbit/channels/plugins/telegram.py`
 - 依赖：
   - 在 `setup.py` 中增加：
     - `httpx>=0.26.0`（用于调用 Telegram Bot API）
@@ -41,7 +41,7 @@ OutboundPayload  →  TelegramChannel.deliver() → sendMessage
 
 ### 3.1 ChannelPlugin：`TelegramChannel`
 
-文件：`mw4agent/channels/plugins/telegram.py`
+文件：`orbit/channels/plugins/telegram.py`
 
 核心实现：
 
@@ -87,13 +87,13 @@ OutboundPayload  →  TelegramChannel.deliver() → sendMessage
 
 ## 4. CLI 接入方式
 
-文件：`mw4agent/cli/channels/register.py`
+文件：`orbit/cli/channels/register.py`
 
 - 命令层级：
 
 ```bash
-mw4agent channels telegram run \
-  --session-file mw4agent.sessions.json \
+orbit channels telegram run \
+  --session-file orbit.sessions.json \
   --bot-token "<TELEGRAM_BOT_TOKEN>"
 ```
 

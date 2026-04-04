@@ -1,6 +1,6 @@
-# MW4Agent 核心类关系图（概览）
+# Orbit 核心类关系图（概览）
 
-本文以简化类关系图的形式，概览 MW4Agent 当前已实现的核心组件及其关联关系（省略非关键属性和部分辅助类）。
+本文以简化类关系图的形式，概览 Orbit 当前已实现的核心组件及其关联关系（省略非关键属性和部分辅助类）。
 
 ---
 
@@ -157,10 +157,10 @@
 
 - `EncryptedFileStore`：对称加密读写（AES-GCM），用于所有敏感文件（sessions/config/skills 等）。
 - `ConfigManager`：
-  - 负责 `~/.mw4agent/config/*.json`（或 `MW4AGENT_CONFIG_DIR`）的加密读写；
+  - 负责 `~/orbit/config/*.json`（或 `ORBIT_CONFIG_DIR`）的加密读写；
   - 用于管理 `llm.json` 等配置。
 - `SkillManager`：
-  - 负责 `~/.mw4agent/skills/*.json` 的加密读写；
+  - 负责 `~/orbit/skills/*.json` 的加密读写；
   - 支持列出 / 批量读取技能定义。
 
 ---
@@ -178,7 +178,7 @@
 +------------------------+
 | _call_openai_chat(...) |
 |  - base_url =          |
-|    MW4AGENT_OPENAI_BASE_URL
+|    ORBIT_OPENAI_BASE_URL
 +------------------------+
           |
    HTTP POST /v1/chat/completions
@@ -195,12 +195,12 @@
   - 当 provider=`openai` 且有 `OPENAI_API_KEY` 时，通过 `_call_openai_chat` 调用兼容 OpenAI 的接口。
 - `_call_openai_chat`：
   - 默认 base URL 为 `https://api.openai.com`；
-  - 通过 `MW4AGENT_OPENAI_BASE_URL` 可重定向到本地 mock server，方便测试。
-- Mock LLM Server（`mw4agent.llm.mock_server`）：
+  - 通过 `ORBIT_OPENAI_BASE_URL` 可重定向到本地 mock server，方便测试。
+- Mock LLM Server（`orbit.llm.mock_server`）：
   - FastAPI 应用，提供 `POST /v1/chat/completions`；
   - 永远返回 200，回显最后一条 user 消息，结构兼容 OpenAI Chat Completions。
 
 ---
 
-以上关系图概括了当前 MW4Agent 的主要类与模块耦合情况，可作为继续扩展（新通道、新 LLM provider、新工具）时的参考框架。 
+以上关系图概括了当前 Orbit 的主要类与模块耦合情况，可作为继续扩展（新通道、新 LLM provider、新工具）时的参考框架。 
 

@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.tools import ToolRegistry, get_tool_registry
-from mw4agent.plugin import (
+from orbit.agents.tools import ToolRegistry, get_tool_registry
+from orbit.plugin import (
     discover_plugins,
     load_plugins,
     get_plugin_skill_source,
     PluginInfo,
     PluginSkillSource,
 )
-from mw4agent.agents.skills.snapshot import build_skill_snapshot
+from orbit.agents.skills.snapshot import build_skill_snapshot
 
 
 FIXTURES_PLUGINS = Path(__file__).resolve().parent / "fixtures" / "plugins"
@@ -22,7 +22,7 @@ REPO_PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
 
 
 def test_discover_plugins_empty_when_no_env(tmp_path, monkeypatch):
-    monkeypatch.delenv("MW4AGENT_PLUGIN_DIR", raising=False)
+    monkeypatch.delenv("ORBIT_PLUGIN_DIR", raising=False)
     infos = discover_plugins()
     assert infos == []
 
@@ -73,7 +73,7 @@ def test_load_plugins_duplicate_tool_name_fails(tmp_path):
     )
     (tmp_path / "tools.py").write_text(
         """
-from mw4agent.agents.tools.base import AgentTool, ToolResult
+from orbit.agents.tools.base import AgentTool, ToolResult
 
 class ReadTool(AgentTool):
     def __init__(self):
@@ -82,13 +82,13 @@ class ReadTool(AgentTool):
         return ToolResult(success=True, result={})
 
 def register_tools(registry=None):
-    from mw4agent.agents.tools import get_tool_registry
+    from orbit.agents.tools import get_tool_registry
     (registry or get_tool_registry()).register(ReadTool())
 """,
         encoding="utf-8",
     )
     reg = ToolRegistry()
-    from mw4agent.agents.tools.read_tool import ReadTool as BuiltinRead
+    from orbit.agents.tools.read_tool import ReadTool as BuiltinRead
     reg.register(BuiltinRead())  # registry already has "read"
     with pytest.raises(ValueError, match="already registered"):
         load_plugins(plugin_dirs=[tmp_path], registry=reg)
@@ -114,7 +114,7 @@ def test_load_plugins_adds_skills_dir():
 
 
 def test_build_skill_snapshot_merges_plugin_skills(tmp_path, monkeypatch):
-    from mw4agent import skills as skills_module
+    from orbit import skills as skills_module
     empty_mgr = type("Mgr", (), {"read_all_skills": lambda: {}})()
     monkeypatch.setattr(skills_module, "get_default_skill_manager", lambda: empty_mgr)
     source = get_plugin_skill_source()
@@ -130,9 +130,9 @@ def test_build_skill_snapshot_merges_plugin_skills(tmp_path, monkeypatch):
 
 
 def test_discover_plugins_from_config(monkeypatch):
-    """When MW4AGENT_PLUGIN_DIR is unset, plugin_dirs are read from root config."""
-    monkeypatch.delenv("MW4AGENT_PLUGIN_DIR", raising=False)
-    from mw4agent.config import root as config_root
+    """When ORBIT_PLUGIN_DIR is unset, plugin_dirs are read from root config."""
+    monkeypatch.delenv("ORBIT_PLUGIN_DIR", raising=False)
+    from orbit.config import root as config_root
     monkeypatch.setattr(
         config_root,
         "read_root_section",
@@ -145,9 +145,9 @@ def test_discover_plugins_from_config(monkeypatch):
 
 def test_load_plugins_respects_plugins_enabled(monkeypatch):
     """When plugins_enabled is set in config, only those plugins are loaded."""
-    from mw4agent.plugin.loader import _get_plugins_enabled_from_config
+    from orbit.plugin.loader import _get_plugins_enabled_from_config
     monkeypatch.setattr(
-        "mw4agent.plugin.loader._get_plugins_enabled_from_config",
+        "orbit.plugin.loader._get_plugins_enabled_from_config",
         lambda: ["skill-plugin"],
     )
     reg = ToolRegistry()

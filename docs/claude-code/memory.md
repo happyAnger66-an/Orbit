@@ -1,6 +1,6 @@
 # Claude Code 记忆系统（产品行为归纳）
 
-本文档归纳 **Claude Code** 在「跨会话持久上下文」上的设计，供 MW4Agent 借鉴。说明如下边界：
+本文档归纳 **Claude Code** 在「跨会话持久上下文」上的设计，供 Orbit 借鉴。说明如下边界：
 
 - **GitHub 上的 [anthropics/claude-code](https://github.com/anthropics/claude-code)** 以 **插件与文档** 为主，**不含** 完整 CLI 源码树（见 [`docs/claude-code/agent.md`](agent.md)）。
 - **完整实现**可在 **Claude Code 产品源码树**（例如本地目录 `ClaudeCode/`，含 `memdir/`、`utils/claudemd.ts`、`main.tsx` 等）中阅读；下文 **§源码级实现** 摘录自该类树中的模块，路径均相对于 **该源码仓库根目录**。
@@ -233,7 +233,7 @@
 
 ---
 
-## 5. 对 MW4Agent 的可借鉴点（抽象）
+## 5. 对 Orbit 的可借鉴点（抽象）
 
 1. **双源**：**人写规范**（CLAUDE.md / rules）与 **机写沉淀**（MEMORY.md 索引 + 主题文件）分离职责。
 2. **加载分层**：全局/祖先/按需子目录；规则可按 **路径 glob** 懒加载。
@@ -241,8 +241,8 @@
 4. **可审计**：记忆落盘为明文 Markdown，支持 `/memory` 类入口编辑与关闭。
 5. **安全与配置分层**：敏感重定向（如记忆目录）限制设置来源，避免项目级劫持。
 6. **与指令注入方式区分**：「进上下文」不等于「等同 system prompt」——需要严格保证时走单独机制（CLI flag / 网关策略等）。
-7. **扩展钩子**：**SessionStart** 注入会话级变量或摘要、**PreCompact/PostCompact** 围绕「压缩」前后做保留或收尾、**InstructionsLoaded** 对齐「哪些规范文件已进入模型上下文」——本地 `plugin-dev` 技能与 `CHANGELOG` 给出了 **可组合** 的工程模式（MW4Agent 可用网关事件或 hook 类比）。
-8. **生态约定**：官方插件里的 Agent 提示词普遍假设存在 **`CLAUDE.md` 级真源**；若 MW4Agent 暴露「项目规范」文件，命名与导入方式应 **一眼可迁移**（例如 `@` 导入或等价机制）。
+7. **扩展钩子**：**SessionStart** 注入会话级变量或摘要、**PreCompact/PostCompact** 围绕「压缩」前后做保留或收尾、**InstructionsLoaded** 对齐「哪些规范文件已进入模型上下文」——本地 `plugin-dev` 技能与 `CHANGELOG` 给出了 **可组合** 的工程模式（Orbit 可用网关事件或 hook 类比）。
+8. **生态约定**：官方插件里的 Agent 提示词普遍假设存在 **`CLAUDE.md` 级真源**；若 Orbit 暴露「项目规范」文件，命名与导入方式应 **一眼可迁移**（例如 `@` 导入或等价机制）。
 
 ---
 

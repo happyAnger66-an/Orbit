@@ -1,6 +1,6 @@
-# MW4Agent（Python）Gateway：Agent 与 Gateway 完整交互流程
+# Orbit（Python）Gateway：Agent 与 Gateway 完整交互流程
 
-本文档描述 MW4Agent 中按 OpenClaw 风格实现的 Python Gateway，目标是跑通：
+本文档描述 Orbit 中按 OpenClaw 风格实现的 Python Gateway，目标是跑通：
 
 - RPC `agent`：触发一次智能体 run（立即返回 accepted + runId）
 - RPC `agent.wait`：等待 run 的 lifecycle 终态（ok/error/timeout）
@@ -12,15 +12,15 @@
 
 ### Gateway
 
-- `mw4agent/gateway/server.py`：FastAPI app（`/rpc`、`/health`、`/ws`）
-- `mw4agent/gateway/state.py`：内存状态（dedupe、runs、ws clients）
-- `mw4agent/gateway/types.py`：协议类型（AgentEvent 等）
-- `mw4agent/gateway/client.py`：最小 HTTP RPC client（CLI 调用）
+- `orbit/gateway/server.py`：FastAPI app（`/rpc`、`/health`、`/ws`）
+- `orbit/gateway/state.py`：内存状态（dedupe、runs、ws clients）
+- `orbit/gateway/types.py`：协议类型（AgentEvent 等）
+- `orbit/gateway/client.py`：最小 HTTP RPC client（CLI 调用）
 
 ### Agent
 
-- `mw4agent/agents/runner/runner.py`：`AgentRunner.run(...)`（支持传入 `run_id`）
-- `mw4agent/agents/events/stream.py`：内部事件流（gateway 订阅后转发）
+- `orbit/agents/runner/runner.py`：`AgentRunner.run(...)`（支持传入 `run_id`）
+- `orbit/agents/events/stream.py`：内部事件流（gateway 订阅后转发）
 
 ## 2. 外部接口（对齐 OpenClaw）
 
@@ -139,35 +139,35 @@ GatewayState 持有：
 - 将内部 `StreamEvent` 转换为 Gateway `AgentEvent` 并 `broadcast(...)`
 - 在 `lifecycle end/error` 时写入 run terminal snapshot 并唤醒 waiters
 
-关键点（与 OpenClaw 一致）：**runId 必须贯穿整个链路**。因此 MW4Agent 的 `AgentRunParams` 支持可选 `run_id`，gateway 生成的 `runId` 会传入 `AgentRunner.run(...)`，保证事件与 wait 统一关联。
+关键点（与 OpenClaw 一致）：**runId 必须贯穿整个链路**。因此 Orbit 的 `AgentRunParams` 支持可选 `run_id`，gateway 生成的 `runId` 会传入 `AgentRunner.run(...)`，保证事件与 wait 统一关联。
 
 ## 4. CLI 使用方式
 
 ### 4.1 启动 Gateway
 
 ```bash
-python3 -m mw4agent gateway run --bind 127.0.0.1 --port 28790 --session-file /tmp/mw4agent.sessions.json
+python3 -m orbit gateway run --bind 127.0.0.1 --port 28790 --session-file /tmp/orbit.sessions.json
 ```
 
 ### 4.2 探测状态
 
 ```bash
-python3 -m mw4agent gateway status --url http://127.0.0.1:28790 --json
-python3 -m mw4agent gateway health --url http://127.0.0.1:28790 --json
+python3 -m orbit gateway status --url http://127.0.0.1:28790 --json
+python3 -m orbit gateway health --url http://127.0.0.1:28790 --json
 ```
 
 ### 4.3 调用 RPC（示例：agent / agent.wait）
 
 ```bash
-python3 -m mw4agent gateway call agent --url http://127.0.0.1:28790 --params '{\"message\":\"hi\",\"sessionKey\":\"rpc:demo\",\"sessionId\":\"demo\",\"agentId\":\"main\",\"idempotencyKey\":\"<uuid>\"}' --json
-python3 -m mw4agent gateway call agent.wait --url http://127.0.0.1:28790 --params '{\"runId\":\"<runId>\",\"timeoutMs\":5000}' --json
+python3 -m orbit gateway call agent --url http://127.0.0.1:28790 --params '{\"message\":\"hi\",\"sessionKey\":\"rpc:demo\",\"sessionId\":\"demo\",\"agentId\":\"main\",\"idempotencyKey\":\"<uuid>\"}' --json
+python3 -m orbit gateway call agent.wait --url http://127.0.0.1:28790 --params '{\"runId\":\"<runId>\",\"timeoutMs\":5000}' --json
 ```
 
 ## 5. 与 OpenClaw 的对应关系（简表）
 
-| OpenClaw | MW4Agent（本实现） |
+| OpenClaw | Orbit（本实现） |
 |---|---|
-| `server-methods/agent.ts` 的 `agent` / `agent.wait` | `mw4agent/gateway/server.py` 的 `/rpc` 分发 |
+| `server-methods/agent.ts` 的 `agent` / `agent.wait` | `orbit/gateway/server.py` 的 `/rpc` 分发 |
 | `context.dedupe` | `GatewayState.dedupe` |
 | `waitForAgentJob`（监听 lifecycle） | `RunRecord.done + snapshot`（由 lifecycle bridge 驱动） |
 | `emitAgentEvent` + `createAgentEventHandler` 广播 | `AgentRunner.event_stream` → `GatewayState.broadcast` |

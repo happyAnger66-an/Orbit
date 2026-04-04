@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mw4agent.agents.session.transcript import (
+from orbit.agents.session.transcript import (
     branch_to_parent,
     build_messages_from_leaf,
     append_compaction,
@@ -17,7 +17,7 @@ from mw4agent.agents.session.transcript import (
 
 
 def test_transcript_roundtrip_and_limit(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     session_id = "sess_001"
     transcript = resolve_session_transcript_path(agent_id="main", session_id=session_id)
 
@@ -43,10 +43,10 @@ def test_transcript_roundtrip_and_limit(monkeypatch, tmp_path: Path) -> None:
 
 def test_session_entry_normalizes_updated_at(monkeypatch) -> None:
     # Force deterministic "now".
-    import mw4agent.agents.session.manager as mod
+    import orbit.agents.session.manager as mod
 
     monkeypatch.setattr(mod.time, "time", lambda: 1730000000.0)  # seconds
-    from mw4agent.agents.session.manager import SessionEntry
+    from orbit.agents.session.manager import SessionEntry
 
     # Legacy tiny placeholder should be treated as invalid and replaced with now_ms.
     e1 = SessionEntry(session_id="s1", session_key="k1", created_at=1, updated_at=2)
@@ -63,7 +63,7 @@ def test_session_entry_normalizes_updated_at(monkeypatch) -> None:
 
 
 def test_transcript_leaf_chain_and_branch(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     session_id = "sess_002"
     transcript = resolve_session_transcript_path(agent_id="main", session_id=session_id)
 
@@ -103,7 +103,7 @@ def test_transcript_leaf_chain_and_branch(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_single_store_transcript_is_colocated(tmp_path: Path) -> None:
-    from mw4agent.agents.session.manager import SessionManager
+    from orbit.agents.session.manager import SessionManager
 
     store = tmp_path / "sessions.json"
     mgr = SessionManager(str(store))

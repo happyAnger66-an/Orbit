@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mw4agent.agents.session.transcript import (
+from orbit.agents.session.transcript import (
     append_messages,
     build_messages_from_leaf,
     resolve_session_transcript_path,
 )
-from mw4agent.agents.runner.runner import _auto_compact_if_needed
+from orbit.agents.runner.runner import _auto_compact_if_needed
 
 
 def test_auto_compaction_rewrites_leaf_chain(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     session_id = "sess_compact_001"
     transcript = resolve_session_transcript_path(agent_id="main", session_id=session_id)
 

@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from mw4agent.channels.plugins.feishu import FeishuChannel
-from mw4agent.channels.types import InboundContext
+from orbit.channels.plugins.feishu import FeishuChannel
+from orbit.channels.types import InboundContext
 
 
 async def _dummy_on_inbound(_ctx: InboundContext) -> None:
@@ -25,7 +25,7 @@ async def test_feishu_channel_websocket_mode_raises_not_implemented(monkeypatch)
     def _no_channels_config(section, default=None):
         return {} if section == "channels" else (default or {})
 
-    monkeypatch.setattr("mw4agent.config.read_root_section", _no_channels_config)
+    monkeypatch.setattr("orbit.config.read_root_section", _no_channels_config)
     ch = FeishuChannel(connection_mode="websocket")
 
     # 未安装 lark-oapi 时抛出“需安装 lark-oapi”；无凭证时抛出“需配置 FEISHU_APP_ID/APP_SECRET”。

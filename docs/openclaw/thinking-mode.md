@@ -121,15 +121,15 @@ OpenClaw 里有两类与“思考”相关的概念，容易混淆：
 
 ---
 
-## 8. 与 MW4Agent 的对照
+## 8. 与 Orbit 的对照
 
-- **AgentRunParams**（`mw4agent/agents/types.py`）已支持：
+- **AgentRunParams**（`orbit/agents/types.py`）已支持：
   - **`thinking_level`**：对应 OpenClaw 的 ThinkLevel，在调用 LLM 时根据 provider 写入对应 API 参数（若接 OpenRouter/Google 则映射 effort 或 thinkingConfig；OpenAI 暂无标准 extended thinking 可预留）。
   - **`reasoning_level`**：对应 ReasoningLevel（`off` | `on` | `stream`），仅影响是否向客户端下发/展示推理块，不改变 API 请求参数。
 
 ### 8.1 在 Gateway 中打开 Thinking / Reasoning
 
-MW4Agent Gateway 的 **`agent`** RPC 已支持通过 params 传入：
+Orbit Gateway 的 **`agent`** RPC 已支持通过 params 传入：
 
 - **`thinkingLevel`**：与 ThinkLevel 一致，可选 `off` | `minimal` | `low` | `medium` | `high` | `xhigh` | `adaptive`。
 - **`reasoningLevel`**：与 ReasoningLevel 一致，可选 `off` | `on` | `stream`。
@@ -150,4 +150,4 @@ MW4Agent Gateway 的 **`agent`** RPC 已支持通过 params 传入：
 }
 ```
 
-Gateway 将上述参数映射为 `AgentRunParams.thinking_level` 与 `AgentRunParams.reasoning_level` 传给 Runner；Runner 与 LLM 据此决定是否开启扩展思考及是否下发/展示推理内容。详见 [MW4Agent Gateway 与 Agent 交互](../../architecture/gateway/mw4agent-gateway-agent-interaction.md)。
+Gateway 将上述参数映射为 `AgentRunParams.thinking_level` 与 `AgentRunParams.reasoning_level` 传给 Runner；Runner 与 LLM 据此决定是否开启扩展思考及是否下发/展示推理内容。详见 [Orbit Gateway 与 Agent 交互](../../architecture/gateway/orbit-gateway-agent-interaction.md)。

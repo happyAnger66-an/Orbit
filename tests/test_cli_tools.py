@@ -5,8 +5,8 @@ import json
 import click
 from click.testing import CliRunner
 
-from mw4agent.cli.tools.register import register_tools_cli
-from mw4agent.config.root import write_root_config
+from orbit.cli.tools.register import register_tools_cli
+from orbit.config.root import write_root_config
 
 
 def _build_cli() -> click.Group:
@@ -21,8 +21,8 @@ def _build_cli() -> click.Group:
 def test_tools_list_shows_enablement_and_limits(tmp_path, monkeypatch) -> None:
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 
     write_root_config({"tools": {"profile": "coding", "deny": ["write"]}})
 

@@ -1,6 +1,6 @@
 # OpenClaw Channels 架构与流程分析
 
-本文档总结 OpenClaw 的 channels（通道层）代码架构与端到端处理流程，作为 MW4Agent 未来实现多通道接入、统一路由与权限/激活控制的参考。
+本文档总结 OpenClaw 的 channels（通道层）代码架构与端到端处理流程，作为 Orbit 未来实现多通道接入、统一路由与权限/激活控制的参考。
 
 ## 核心设计：Dock（轻）+ Plugin（重）
 
@@ -137,9 +137,9 @@ OpenClaw 的出站不是“channels 层统一 send()”，而是：
   - `src/discord/monitor/message-handler.process.ts`
   - `src/signal/monitor/event-handler.ts`
 
-## 对 MW4Agent 的落地启示（简版）
+## 对 Orbit 的落地启示（简版）
 
-如果 MW4Agent 要复刻 OpenClaw 的 channels 架构，建议：
+如果 Orbit 要复刻 OpenClaw 的 channels 架构，建议：
 
 - **定义轻量 Dock 层**：只放共享管线必需的策略/能力/格式化函数，确保依赖稳定、加载快。
 - **定义 Plugin/Adapter 层**：每个平台的“监控入站 + 发送出站 + 配置/配对/安全/线程/群策略”等放这里。

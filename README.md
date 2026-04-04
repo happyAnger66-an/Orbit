@@ -1,13 +1,13 @@
-# MW4Agent
+# Orbit
 
-Python 实现的智能体网关与 CLI，设计上参考 [OpenClaw](https://github.com/openclaw/openclaw) 的网关模型、RPC 语义与可扩展命令体系，提供 Gateway、Agent 运行、多通道接入与 Web 控制台等能力。
+Python 实现的智能体网关与 CLI，提供 Gateway、Agent 运行、多通道接入与 Web 控制台/Destop native等能力。
 
 ## 功能概览
 
 - **Gateway**：HTTP RPC（`agent` / `agent.wait` / `health`）与 WebSocket 事件流（`/ws`），支持幂等、run 注册与等待
 - **Agent Runner**：基于 LLM 的对话与工具调用循环，支持 reasoning/thinking 流式输出、内置 read/write 工具（workspace 限定）
 - **CLI**：可扩展命令注册与懒加载，提供 `gateway`、`agent`、`channels`、`config`、`configuration` 等命令组
-- **Desktop（Orbit）**：Next.js + Tauri 桌面 / 独立 Web 前端，经 RPC 与 WebSocket 连接 Gateway；用法见 [mw4agent/desktop/README.md](mw4agent/desktop/README.md)
+- **Desktop（Orbit）**：Next.js + Tauri 桌面 / 独立 Web 前端，经 RPC 与 WebSocket 连接 Gateway；用法见 [frontend/desktop/README.md](frontend/desktop/README.md)
 - **Dashboard**：浏览器控制台，连接 Gateway WebSocket，支持聊天、事件流展示与多语言/主题
 - **Channels**：Console、Telegram、Webhook、飞书等通道，可独立运行或与 Gateway 配合
 - **配置与安全**：加密配置文件、LLM provider/model 配置、技能（skills）管理
@@ -16,7 +16,7 @@ Python 实现的智能体网关与 CLI，设计上参考 [OpenClaw](https://gith
 
 ```bash
 git clone <repo-url>
-cd mw4agent
+cd <repo-root>
 pip install -e .
 ```
 
@@ -34,14 +34,14 @@ pip install -e ".[socks]"
 安装后可通过命令行使用：
 
 ```bash
-mw4agent --help
-mw4agent gateway run --bind 127.0.0.1 --port 18790
-mw4agent gateway status --url http://127.0.0.1:18790
+orbit --help
+orbit gateway run --bind 127.0.0.1 --port 18790
+orbit gateway status --url http://127.0.0.1:18790
 ```
 
 ### Desktop（Orbit）
 
-独立桌面或本地 Web 界面（`npm run dev` / Tauri），与 Gateway 使用相同的 **HTTP RPC** 与 **WebSocket**；需先启动 Gateway，再按 **[Desktop 使用说明](mw4agent/desktop/README.md)** 安装依赖、配置 `NEXT_PUBLIC_GATEWAY_URL` 并运行。
+独立桌面或本地 Web 界面（`npm run dev` / Tauri），与 Gateway 使用相同的 **HTTP RPC** 与 **WebSocket**；需先启动 Gateway，再按 **[Desktop 使用说明](frontend/desktop/README.md)** 安装依赖、配置 `NEXT_PUBLIC_GATEWAY_URL` 并运行。
 
 ### Dashboard 控制台
 
@@ -50,7 +50,7 @@ Dashboard 是内嵌在 Gateway 里的 Web 控制台，用于在浏览器里与 A
 1. **启动 Gateway**（会同时提供 Dashboard 静态页与 WebSocket）：
 
    ```bash
-   mw4agent gateway run --bind 127.0.0.1 --port 18790
+   orbit gateway run --bind 127.0.0.1 --port 18790
    ```
 
 2. **打开浏览器**访问：
@@ -84,8 +84,8 @@ Dashboard 是内嵌在 Gateway 里的 Web 控制台，用于在浏览器里与 A
 ## 项目结构（简要）
 
 ```
-mw4agent/
-├── mw4agent/
+orbit/
+├── orbit/
 │   ├── cli/              # CLI 入口与命令注册
 │   ├── gateway/          # Gateway HTTP/WS 服务与状态
 │   ├── agents/            # AgentRunner、tools、events、reasoning

@@ -8,14 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.agent_manager import AgentManager
-from mw4agent.agents.runner.runner import AgentRunner, _resolve_run_workspace_dir
-from mw4agent.agents.session.multi_manager import MultiAgentSessionManager
-from mw4agent.agents.tools.memory_tool import MemorySearchTool
-from mw4agent.agents.tools.registry import ToolRegistry
-from mw4agent.agents.types import AgentRunParams
-from mw4agent.config.paths import resolve_agent_sessions_file, resolve_agent_workspace_dir
-from mw4agent.llm.backends import LLMUsage
+from orbit.agents.agent_manager import AgentManager
+from orbit.agents.runner.runner import AgentRunner, _resolve_run_workspace_dir
+from orbit.agents.session.multi_manager import MultiAgentSessionManager
+from orbit.agents.tools.memory_tool import MemorySearchTool
+from orbit.agents.tools.registry import ToolRegistry
+from orbit.agents.types import AgentRunParams
+from orbit.config.paths import resolve_agent_sessions_file, resolve_agent_workspace_dir
+from orbit.llm.backends import LLMUsage
 
 
 def _norm(p: str) -> str:
@@ -23,7 +23,7 @@ def _norm(p: str) -> str:
 
 
 def test_resolve_run_workspace_dir_per_agent(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw"))
     p = AgentRunParams(message="m", agent_id="coders")
     got = _resolve_run_workspace_dir(p)
     assert _norm(got).endswith("agents/coders/workspace")
@@ -36,7 +36,7 @@ def test_resolve_run_workspace_dir_per_agent(monkeypatch, tmp_path: Path) -> Non
 
 
 def test_multi_agent_session_store_and_transcript_under_agent(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw"))
     aid = "coders"
     sess_file = resolve_agent_sessions_file(aid)
     assert "agents" in _norm(sess_file)
@@ -53,7 +53,7 @@ async def test_runner_with_agent_id_writes_transcript_cwd_to_agent_workspace(
     monkeypatch, tmp_path: Path
 ) -> None:
     """模拟 Feishu 绑定 agent_id 后直连 Runner：transcript 在 agents/<id>/sessions，cwd 为 agents/<id>/workspace。"""
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw"))
     aid = "coders"
     ws = resolve_agent_workspace_dir(aid)
     Path(ws).mkdir(parents=True, exist_ok=True)
@@ -65,7 +65,7 @@ async def test_runner_with_agent_id_writes_transcript_cwd_to_agent_workspace(
     def fake_gen(params, messages=None):
         return ("ok", "echo", "m", LLMUsage())
 
-    monkeypatch.setattr("mw4agent.agents.runner.runner.generate_reply", fake_gen)
+    monkeypatch.setattr("orbit.agents.runner.runner.generate_reply", fake_gen)
 
     params = AgentRunParams(
         message="hi",
@@ -91,7 +91,7 @@ async def test_memory_search_uses_runner_style_workspace_for_bound_agent(
     monkeypatch, tmp_path: Path
 ) -> None:
     """memory_search 在 context.workspace_dir 为 per-agent workspace 时从该目录读 MEMORY.md。"""
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / "mw"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / "mw"))
     aid = "coders"
     ws = resolve_agent_workspace_dir(aid)
     Path(ws).mkdir(parents=True, exist_ok=True)

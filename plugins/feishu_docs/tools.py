@@ -3,8 +3,8 @@
 与 feishu-openclaw-plugin 中 MCP 文档工具（fetch-doc / create-doc / update-doc）使用同一协议：
 HTTP `tools/call` + 请求头 `X-Lark-MCP-UAT`。
 
-UAT 来源优先级：环境变量 FEISHU_MCP_UAT 等 → mw4agent.json 明文字段 →
-`mw4agent feishu authorize` 写入的 ~/.mw4agent/feishu_oauth.json（含 refresh 自动续期）。
+UAT 来源优先级：环境变量 FEISHU_MCP_UAT 等 → orbit.json 明文字段 →
+`orbit feishu authorize` 写入的 ~/.orbit/feishu_oauth.json（含 refresh 自动续期）。
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from mw4agent.agents.tools.base import AgentTool, ToolResult
-from mw4agent.log import get_logger
+from orbit.agents.tools.base import AgentTool, ToolResult
+from orbit.log import get_logger
 
 logger = get_logger(__name__)
 
@@ -66,10 +66,10 @@ def resolve_mcp_bearer() -> Optional[str]:
 
 
 def _resolve_feishu_app_for_oauth_store() -> tuple[Optional[str], Optional[str], str]:
-    """Return (app_id, app_secret, brand) for reading ~/.mw4agent/feishu_oauth.json."""
+    """Return (app_id, app_secret, brand) for reading ~/.orbit/feishu_oauth.json."""
     try:
-        from mw4agent.channels.feishu_accounts import list_feishu_accounts
-        from mw4agent.config.root import read_root_section
+        from orbit.channels.feishu_accounts import list_feishu_accounts
+        from orbit.config.root import read_root_section
 
         ch = read_root_section("channels", default={})
         fs = ch.get("feishu") if isinstance(ch, dict) else None
@@ -113,7 +113,7 @@ def resolve_mcp_uat(context: Optional[Dict[str, Any]] = None) -> Optional[str]:
         if v:
             return v
     try:
-        from mw4agent.config.root import read_root_section
+        from orbit.config.root import read_root_section
 
         ch = read_root_section("channels", default={})
         if isinstance(ch, dict):
@@ -127,7 +127,7 @@ def resolve_mcp_uat(context: Optional[Dict[str, Any]] = None) -> Optional[str]:
         logger.debug("resolve_mcp_uat: config read skipped: %s", e)
 
     try:
-        from mw4agent.feishu.user_oauth import get_valid_user_access_token
+        from orbit.feishu.user_oauth import get_valid_user_access_token
 
         app_id, app_secret, brand = _resolve_feishu_app_for_oauth_store()
         if app_id and app_secret:
@@ -160,7 +160,7 @@ async def call_feishu_mcp(
         "Content-Type": "application/json",
         "X-Lark-MCP-UAT": uat,
         "X-Lark-MCP-Allowed-Tools": mcp_tool_name,
-        "User-Agent": "mw4agent-feishu-docs-plugin/0.1",
+        "User-Agent": "orbit-feishu-docs-plugin/0.1",
     }
     bearer = resolve_mcp_bearer()
     if bearer:
@@ -244,12 +244,12 @@ def _missing_uat_result() -> ToolResult:
             "error": "missing_uat",
             "hint": (
                 "需用户访问令牌。飞书内可发 /mw4auth 或 飞书授权 完成卡片授权；"
-                "或 mw4agent feishu authorize；或 FEISHU_MCP_UAT / channels.feishu.mcp_user_access_token。"
+                "或 orbit feishu authorize；或 FEISHU_MCP_UAT / channels.feishu.mcp_user_access_token。"
             ),
         },
         error=(
             "feishu MCP: 无可用用户访问令牌。可在飞书对话发送 **/mw4auth** 或 **飞书授权** 获取卡片授权；"
-            "或执行: mw4agent feishu authorize；或设置 FEISHU_MCP_UAT / "
+            "或执行: orbit feishu authorize；或设置 FEISHU_MCP_UAT / "
             "channels.feishu.mcp_user_access_token。"
         ),
     )
@@ -415,7 +415,7 @@ class FeishuUpdateDocTool(AgentTool):
 
 def register_tools(registry: Any = None) -> None:
     if registry is None:
-        from mw4agent.agents.tools import get_tool_registry
+        from orbit.agents.tools import get_tool_registry
 
         registry = get_tool_registry()
     for t in (FeishuFetchDocTool(), FeishuCreateDocTool(), FeishuUpdateDocTool()):

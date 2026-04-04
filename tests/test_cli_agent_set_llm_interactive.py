@@ -1,4 +1,4 @@
-"""CLI: `mw4agent agent set-llm` interactive wizard."""
+"""CLI: `orbit agent set-llm` interactive wizard."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ import json
 import click
 from click.testing import CliRunner
 
-from mw4agent.agents.agent_manager import AgentManager
-from mw4agent.cli.agent.register import register_agent_cli
-from mw4agent.cli.context import create_program_context
+from orbit.agents.agent_manager import AgentManager
+from orbit.cli.agent.register import register_agent_cli
+from orbit.cli.context import create_program_context
 
 
 def _build_cli() -> click.Group:
@@ -22,7 +22,7 @@ def _build_cli() -> click.Group:
 
 
 def test_agent_set_llm_interactive_writes_provider_model(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     mgr = AgentManager()
     mgr.get_or_create("demo")
 

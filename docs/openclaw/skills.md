@@ -1,6 +1,6 @@
 # OpenClaw Skills 体系分析
 
-本文总结 OpenClaw 中 **skills（技能）** 的整体设计与使用方式，侧重于与智能体运行、会话状态以及 CLI 之间的关系，便于在 MW4Agent 中做类似能力的复刻或裁剪实现。
+本文总结 OpenClaw 中 **skills（技能）** 的整体设计与使用方式，侧重于与智能体运行、会话状态以及 CLI 之间的关系，便于在 Orbit 中做类似能力的复刻或裁剪实现。
 
 ---
 
@@ -335,7 +335,7 @@ OpenClaw 提供了一个完整的 `openclaw skills` 子命令，用于：
 
 ---
 
-## 6. 对 MW4Agent 的启发
+## 6. 对 Orbit 的启发
 
 从 OpenClaw 的实现可以抽出几条可复用的设计要点：
 
@@ -345,7 +345,7 @@ OpenClaw 提供了一个完整的 `openclaw skills` 子命令，用于：
 4. **Prompt 作为集成点**：skills 与 LLM 的衔接点就是“系统提示中的技能列表”，无需修改模型调用接口；
 5. **CLI 与配置闭环**：用 CLI 提供 `skills` 维度的可观测性与运维能力，避免 skills 变成“黑箱目录”。
 
-在 MW4Agent 里，如果要逐步引入 skills，可以先实现：
+在 Orbit 里，如果要逐步引入 skills，可以先实现：
 
 - 简化版的 `SkillSnapshot`（放在 `SessionEntry` 上）；
 - 一个从单一 `skills/` 目录扫描 `SKILL.md` 的最小实现；

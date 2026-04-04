@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.cli.configuration import CONFIG_SECTION_CHOICES, _run_agent_llm_config
+from orbit.cli.configuration import CONFIG_SECTION_CHOICES, _run_agent_llm_config
 
 
 def test_wizard_section_choices_include_agent_llm() -> None:
@@ -19,11 +19,11 @@ def test_wizard_section_choices_include_agent_llm() -> None:
 
 def test_run_agent_llm_config_writes_agent_json(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "0")
-    monkeypatch.delenv("MW4AGENT_SECRET_KEY", raising=False)
+    monkeypatch.setenv("ORBIT_IS_ENC", "0")
+    monkeypatch.delenv("ORBIT_SECRET_KEY", raising=False)
 
     monkeypatch.setattr(
-        "mw4agent.cli.configuration._prompt_provider_list",
+        "orbit.cli.configuration._prompt_provider_list",
         lambda _current: "echo",
     )
 
@@ -51,11 +51,11 @@ def test_run_agent_llm_config_writes_agent_json(tmp_path, monkeypatch) -> None:
             return ""
         return kwargs.get("default", "")
 
-    monkeypatch.setattr("mw4agent.cli.configuration.click.prompt", cp)
+    monkeypatch.setattr("orbit.cli.configuration.click.prompt", cp)
 
     _run_agent_llm_config()
 
-    agent_json = Path(tmp_path) / ".mw4agent" / "agents" / "coders" / "agent.json"
+    agent_json = Path(tmp_path) / ".orbit" / "agents" / "coders" / "agent.json"
     assert agent_json.is_file()
     data = json.loads(agent_json.read_text(encoding="utf-8"))
     assert data.get("llm", {}).get("provider") == "echo"

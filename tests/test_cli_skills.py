@@ -6,8 +6,8 @@ from pathlib import Path
 import click
 from click.testing import CliRunner
 
-from mw4agent.cli.skills.register import register_skills_cli
-from mw4agent.config.root import write_root_config
+from orbit.cli.skills.register import register_skills_cli
+from orbit.config.root import write_root_config
 
 
 def _build_cli() -> click.Group:
@@ -27,9 +27,9 @@ def test_skills_list_and_check_json(tmp_path: Path, monkeypatch) -> None:
     (workspace / "skills").mkdir(parents=True, exist_ok=True)
     home_skills.mkdir(parents=True, exist_ok=True)
 
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    monkeypatch.setenv("MW4AGENT_SKILLS_DIR", str(home_skills))
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("ORBIT_SKILLS_DIR", str(home_skills))
+    monkeypatch.setenv("ORBIT_SECRET_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 
     (workspace / "skills" / "demo.json").write_text(
         json.dumps({"name": "demo", "description": "Demo skill"}),

@@ -21,20 +21,20 @@ from pathlib import Path
 import pytest
 import uvicorn
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.channels.dispatcher import ChannelDispatcher, ChannelRuntime
-from mw4agent.channels.registry import ChannelRegistry
-from mw4agent.channels.dock import ChannelDock
-from mw4agent.channels.types import (
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.channels.dispatcher import ChannelDispatcher, ChannelRuntime
+from orbit.channels.registry import ChannelRegistry
+from orbit.channels.dock import ChannelDock
+from orbit.channels.types import (
     ChannelCapabilities,
     ChannelMeta,
     InboundContext,
     OutboundPayload,
 )
-from mw4agent.channels.plugins.base import ChannelPlugin
-from mw4agent.config import get_default_config_manager
-from mw4agent.llm.mock_server import create_app as create_mock_llm_app
+from orbit.channels.plugins.base import ChannelPlugin
+from orbit.config import get_default_config_manager
+from orbit.llm.mock_server import create_app as create_mock_llm_app
 
 
 def _find_free_port() -> int:
@@ -137,13 +137,13 @@ def gateway_with_mock_llm(tmp_path: Path, mock_llm_server: int):
 
     # Prepare environment for the gateway process.
     env = dict(os.environ)
-    env["MW4AGENT_CONFIG_DIR"] = str(cfg_dir)
-    env["MW4AGENT_OPENAI_BASE_URL"] = f"http://127.0.0.1:{mock_port}"
+    env["ORBIT_CONFIG_DIR"] = str(cfg_dir)
+    env["ORBIT_OPENAI_BASE_URL"] = f"http://127.0.0.1:{mock_port}"
     env["OPENAI_API_KEY"] = "test-key"
 
-    # Write root config with llm section (single file ~/.mw4agent/mw4agent.json or MW4AGENT_CONFIG_DIR/mw4agent.json).
-    # Gateway subprocess has MW4AGENT_CONFIG_DIR=cfg_dir, so it will read cfg_dir/mw4agent.json.
-    root_config = cfg_dir / "mw4agent.json"
+    # Write root config with llm section (single file ~/.orbit/orbit.json or ORBIT_CONFIG_DIR/orbit.json).
+    # Gateway subprocess has ORBIT_CONFIG_DIR=cfg_dir, so it will read cfg_dir/orbit.json.
+    root_config = cfg_dir / "orbit.json"
     root_config.parent.mkdir(parents=True, exist_ok=True)
     root_config.write_text(
         json.dumps({
@@ -159,7 +159,7 @@ def gateway_with_mock_llm(tmp_path: Path, mock_llm_server: int):
     cmd = [
         sys.executable,
         "-m",
-        "mw4agent",
+        "orbit",
         "gateway",
         "run",
         "--bind",

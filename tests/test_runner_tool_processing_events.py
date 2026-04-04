@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.tools.base import AgentTool, ToolResult
-from mw4agent.agents.tools.registry import ToolRegistry
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.tools.base import AgentTool, ToolResult
+from orbit.agents.tools.registry import ToolRegistry
 
 
 class _SlowTool(AgentTool):
@@ -28,7 +28,7 @@ class _SlowTool(AgentTool):
 async def test_execute_tool_emits_processing_event_for_long_running_tool(tmp_path, monkeypatch) -> None:
     # Shrink timing windows to keep test fast:
     # "超过30s后每60s" => here "超过20ms后每20ms".
-    import mw4agent.agents.runner.runner as runner_mod
+    import orbit.agents.runner.runner as runner_mod
 
     monkeypatch.setattr(runner_mod, "TOOL_PROCESSING_START_SEC", 0.02)
     monkeypatch.setattr(runner_mod, "TOOL_PROCESSING_INTERVAL_SEC", 0.02)

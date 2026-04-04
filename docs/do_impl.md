@@ -1,4 +1,4 @@
-# MW4Agent MemoryIndex 实现记录（阶段性落地）
+# Orbit MemoryIndex 实现记录（阶段性落地）
 
 本文用于记录 `docs/do_plan.md` 中 Memory 相关规划的**实际实现进度**，方便之后查阅“做到哪一步了、代码在哪儿、行为有何变化”。
 
@@ -8,15 +8,15 @@
 
 - **时间**：已完成于本次迭代。
 - **核心改动**：
-  - 新增 `mw4agent/memory/backend.py`：
+  - 新增 `orbit/memory/backend.py`：
     - 定义 `SearchOptions` 数据类（`max_results/min_score/session_key/session_id/agent_id`）。
     - 定义抽象类 `MemoryBackend`：
       - `search(...)` / `read_file(...)` / 预留 `sync` / `note_session_delta` / `status`。
     - 实现 `StubMemoryBackend`：
-      - `search(...)` 直接委托到现有 `mw4agent.memory.search.search(...)`。
-      - `read_file(...)` 委托到 `mw4agent.memory.search.read_file(...)`。
+      - `search(...)` 直接委托到现有 `orbit.memory.search.search(...)`。
+      - `read_file(...)` 委托到 `orbit.memory.search.read_file(...)`。
     - 工厂方法 `get_memory_backend()` 返回单例 `StubMemoryBackend`。
-  - `MemorySearchTool` / `MemoryGetTool`（`mw4agent/agents/tools/memory_tool.py`）改为通过 backend 调用：
+  - `MemorySearchTool` / `MemoryGetTool`（`orbit/agents/tools/memory_tool.py`）改为通过 backend 调用：
     - 构造 `SearchOptions`，从 `tool_context` 里带上 `session_id/agent_id/session_key` 等。
     - 调用 `backend.search(...)` / `backend.read_file(...)`，不再直接引用 `memory.search/read_file`。
 - **行为影响**：
@@ -28,10 +28,10 @@
 
 - **时间**：已完成于本次迭代。
 
-### 1. 新增 SQLite 索引层：`mw4agent/memory/index.py`
+### 1. 新增 SQLite 索引层：`orbit/memory/index.py`
 
 - 主要职责：
-  - 管理每个 agent 的本地索引文件：`~/.mw4agent/agents/<agentId>/memory/index.sqlite`。
+  - 管理每个 agent 的本地索引文件：`~/orbit/agents/<agentId>/memory/index.sqlite`。
   - 为 file-based memory 源（`MEMORY.md` + `memory/*.md` 等）提供统一的 on-disk 索引。
 - 核心结构：
   - `chunks` 表：
@@ -56,7 +56,7 @@
 
 ### 2. LocalIndexBackend：基于 SQLite 的 MemoryBackend 实现
 
-- 文件：`mw4agent/memory/backend.py`
+- 文件：`orbit/memory/backend.py`
 - 行为：
   - `_db_path_for(agent_id)`：
     - 使用 `resolve_agent_dir(agent_id)` → `<agentDir>/memory/index.sqlite`。
@@ -79,7 +79,7 @@
     - 返回 `StubMemoryBackend()`（Phase 0 的文件版实现）。
 - 这意味着：
   - **默认行为不变**：未显式开启 `memory.enabled` 时，仍然使用原始文件扫描。
-  - 需要体验本地 MemoryIndex 时，只需在 `~/.mw4agent/mw4agent.json` 中加入：
+  - 需要体验本地 MemoryIndex 时，只需在 `~/orbit/orbit.json` 中加入：
     ```json
     {
       "memory": {
@@ -92,8 +92,8 @@
 
 - 新增测试：`tests/test_memory_index_backend.py`
   - 在临时目录下设置：
-    - `MW4AGENT_STATE_DIR` 指向临时 `.mw4agent`。
-    - `MW4AGENT_CONFIG_DIR` 指向临时 `cfg` 目录，并写入：
+    - `ORBIT_STATE_DIR` 指向临时 `.orbit`。
+    - `ORBIT_CONFIG_DIR` 指向临时 `cfg` 目录，并写入：
       ```json
       {
         "memory": {
@@ -115,17 +115,17 @@
 ## Phase 2：会话增量同步 + sessions 纳入索引（已完成）
 
 - **时间**：本次迭代补全（对齐 `docs/do_plan.md` Phase 2）。
-- **Transcript → MemoryIndex**（`mw4agent/agents/session/transcript.py`）：
+- **Transcript → MemoryIndex**（`orbit/agents/session/transcript.py`）：
   - 在 `append_messages` / `append_compaction` / `append_custom` / `branch_to_parent` 写入结束后调用 `_notify_transcript_index_delta(...)`。
   - 内部 **惰性** `get_memory_backend().note_session_delta(...)`，并据 transcript 路径推断 `agent_id`（`.../agents/<id>/sessions/...`）。
-  - **Runner**（`mw4agent/agents/runner/runner.py`）不再重复调用 `note_session_delta`，避免与 transcript 钩子双重触发。
+  - **Runner**（`orbit/agents/runner/runner.py`）不再重复调用 `note_session_delta`，避免与 transcript 钩子双重触发。
 - **可配置节流**（`memory.sync.sessions`）：
   - `LocalIndexBackend` 读取 `deltaBytes` / `deltaMessages`（非负整数）。
   - **二者均为 0 或未配置**（默认）：每次 `note_session_delta` 都尝试刷新会话 chunk（与 Phase 2 前行为一致）。
   - **任一大于 0**：累积增量，满足 **字节阈值或消息阈值** 之一时才刷新；未刷新时 **`memory_search` 仍会在带 `session_id` 的 search 路径上按文件 mtime 懒更新**，避免漏检。
 - **检索元数据**：
-  - `mw4agent/memory/index.py` 的 `search_index` 结果增加 `session_id`（由 `sessions/<sid>.jsonl` 解析）、`created_at` / `updated_at`（毫秒）。
-  - `MemorySearchResult`（`mw4agent/memory/search.py`）增加对应可选字段。
+  - `orbit/memory/index.py` 的 `search_index` 结果增加 `session_id`（由 `sessions/<sid>.jsonl` 解析）、`created_at` / `updated_at`（毫秒）。
+  - `MemorySearchResult`（`orbit/memory/search.py`）增加对应可选字段。
   - `MemorySearchTool` JSON 增加可选 `sessionId` / `createdAt` / `updatedAt`（camelCase）。
 - **`LocalIndexBackend.sync`**：
   - 清空已索引 workspace 集合、session mtime 缓存与 delta 累积表；下次 `search` 会按需重建文件侧索引。

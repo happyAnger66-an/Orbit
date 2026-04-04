@@ -1,6 +1,6 @@
 # OpenClaw Feishu 插件架构与代码逻辑分析
 
-本文档分析 `feishu-openclaw-plugin` 这个 OpenClaw 飞书/Lark 插件的整体架构与核心代码逻辑，便于在 MW4Agent 中复刻 Feishu 通道和相关工具能力时参考。
+本文档分析 `feishu-openclaw-plugin` 这个 OpenClaw 飞书/Lark 插件的整体架构与核心代码逻辑，便于在 Orbit 中复刻 Feishu 通道和相关工具能力时参考。
 
 > 参考文件：
 >
@@ -420,7 +420,7 @@ export function registerFeishuOAuthTool(api) {
   - 暴露 `feishu-diagnose` CLI 命令，结合 `traceByMessageId`、`analyzeTrace` 等能力对通道链路做端到端诊断；
   - 提供丰富的 trace 日志与卡片 UI，以便开发者与运维快速定位问题。
 
-对 MW4Agent 来说，这个插件提供了一个成熟的 Feishu 通道设计范本，后续在 Python 侧实现 Feishu 通道时，可以：
+对 Orbit 来说，这个插件提供了一个成熟的 Feishu 通道设计范本，后续在 Python 侧实现 Feishu 通道时，可以：
 
 - 参考 `feishuOutbound` 的分层方式（adapter + 底层 SDK 调用）；
 - 参考 `accounts.js` 的多账号配置管理模型；

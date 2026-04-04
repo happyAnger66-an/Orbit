@@ -8,10 +8,10 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_web_fetch_disabled_by_default(monkeypatch, tmp_path):
-    from mw4agent.agents.tools.web_fetch_tool import WebFetchTool
+    from orbit.agents.tools.web_fetch_tool import WebFetchTool
 
     # No tools.web.fetch.enabled config -> disabled (safe default)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(tmp_path))
     tool = WebFetchTool()
     res = await tool.execute("tc1", {"url": "https://example.com"})
     assert res.success is False
@@ -20,10 +20,10 @@ async def test_web_fetch_disabled_by_default(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_web_fetch_ssrf_blocks_private_ip(monkeypatch, tmp_path):
-    from mw4agent.agents.tools.web_fetch_tool import WebFetchTool
-    from mw4agent.config.root import write_root_config
+    from orbit.agents.tools.web_fetch_tool import WebFetchTool
+    from orbit.config.root import write_root_config
 
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(tmp_path))
     write_root_config({"tools": {"web": {"fetch": {"enabled": True}}}})
 
     def fake_getaddrinfo(host, port, *args, **kwargs):
@@ -40,8 +40,8 @@ async def test_web_fetch_ssrf_blocks_private_ip(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_web_fetch_fetches_and_wraps(monkeypatch, tmp_path):
-    from mw4agent.agents.tools.web_fetch_tool import WebFetchTool
-    from mw4agent.config.root import write_root_config
+    from orbit.agents.tools.web_fetch_tool import WebFetchTool
+    from orbit.config.root import write_root_config
 
     write_root_config({"tools": {"web": {"fetch": {"enabled": True, "cacheTtlMinutes": 5}}}})
 

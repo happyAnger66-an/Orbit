@@ -4,8 +4,8 @@ from typing import Any, Dict
 
 import pytest
 
-from mw4agent.channels.plugins.feishu import FeishuChannel
-from mw4agent.channels.types import InboundContext
+from orbit.channels.plugins.feishu import FeishuChannel
+from orbit.channels.types import InboundContext
 
 
 def _find_free_port() -> int:
@@ -20,7 +20,7 @@ async def test_feishu_deliver_prints_without_chat_id(monkeypatch, capsys):
     channel = FeishuChannel()
 
     # 构造一个最小的 InboundContext 和 OutboundPayload.extra 结构
-    from mw4agent.channels.types import OutboundPayload
+    from orbit.channels.types import OutboundPayload
 
     payload = OutboundPayload(
         text="hello",
@@ -53,7 +53,7 @@ async def test_feishu_run_monitor_url_verification(monkeypatch):
         await asyncio.sleep(0)
 
     # Patch the class method so that any FeishuChannel.run_monitor uses the fake monitor.
-    from mw4agent.channels.plugins.feishu import FeishuChannel as FeishuChannelClass
+    from orbit.channels.plugins.feishu import FeishuChannel as FeishuChannelClass
     monkeypatch.setattr(FeishuChannelClass, "_run_webhook_monitor", fake_run_webhook_monitor, raising=True)
 
     # Just ensure run_monitor completes without raising.

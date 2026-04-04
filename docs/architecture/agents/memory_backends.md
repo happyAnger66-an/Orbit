@@ -1,6 +1,6 @@
 # Session Memory 后端插件化设计（Memory Backends）
 
-本文在 `docs/architecture/agent/session_memory.md` 的基础上，抽象出 **会话短期记忆（Session Memory）** 的插件化接口，使 `mw4agent` 可以像 OpenClaw 一样支持多种 session memory 实现（本地 JSONL、数据库、增强型 memory 等），而 `AgentRunner` 只依赖统一接口。
+本文在 `docs/architecture/agent/session_memory.md` 的基础上，抽象出 **会话短期记忆（Session Memory）** 的插件化接口，使 `orbit` 可以像 OpenClaw 一样支持多种 session memory 实现（本地 JSONL、数据库、增强型 memory 等），而 `AgentRunner` 只依赖统一接口。
 
 ## 设计目标
 
@@ -126,7 +126,7 @@ class SessionMemoryBackend:
 为了支持多实现并通过配置选择，我们引入一个简单的注册表：
 
 ```python
-# mw4agent/agents/session/memory_registry.py
+# orbit/agents/session/memory_registry.py
 
 from typing import Callable, Dict
 
@@ -153,7 +153,7 @@ def get_session_memory_registry() -> SessionMemoryRegistry:
     return _registry
 ```
 
-未来配置示例（`~/.mw4agent/mw4agent.json`）：
+未来配置示例（`~/orbit/orbit.json`）：
 
 ```jsonc
 {
@@ -169,7 +169,7 @@ def get_session_memory_registry() -> SessionMemoryRegistry:
 `AgentRunner` 启动时读取 root config，通过 `SessionMemoryRegistry` 创建对应 backend 实例：
 
 ```python
-cfg = get_default_config_manager().read_config("mw4agent", default={})
+cfg = get_default_config_manager().read_config("orbit", default={})
 session_cfg = cfg.get("session") or {}
 backend_name = (session_cfg.get("memory") or {}).get("backend", "jsonl")
 memory_cfg = SessionMemoryConfig(
@@ -181,7 +181,7 @@ memory_backend = get_session_memory_registry().create(backend_name, memory_cfg)
 
 ## 默认实现建议：JSONL Transcript Backend
 
-当前仓库已经实现了一套基于 JSONL transcript 的 session memory（见 `mw4agent/agents/session/transcript.py` + `AgentRunner` 中的注入逻辑）。后续可以将其重构为一个默认 backend，例如：
+当前仓库已经实现了一套基于 JSONL transcript 的 session memory（见 `orbit/agents/session/transcript.py` + `AgentRunner` 中的注入逻辑）。后续可以将其重构为一个默认 backend，例如：
 
 ```python
 class JsonlSessionMemoryBackend(SessionMemoryBackend):

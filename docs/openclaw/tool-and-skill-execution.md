@@ -106,7 +106,7 @@
 
 ## 6. 相关文档与仓库路径
 
-- 仓库：openclaw（与 mw4agent 同级或独立 clone）。  
+- 仓库：openclaw（与 orbit 同级或独立 clone）。  
 - 关键文件：  
   - `src/agents/pi-embedded-runner/run/attempt.ts`（工具与 system prompt 的组装、skills 注入）；  
   - `src/agents/pi-tools.ts`（`createOpenClawCodingTools`）；  
@@ -114,4 +114,4 @@
   - `src/agents/skills/workspace.ts`（`resolveSkillsPromptForRun`、`buildWorkspaceSkillsPrompt`）；  
   - `src/agents/pi-embedded-runner/system-prompt.ts`（`buildEmbeddedSystemPrompt`）；  
   - `src/agents/tools/*.ts`（各工具实现）。  
-- MW4Agent 侧可参考：`docs/openclaw/nodes.md`、`docs/architecture/gateway/agent_call_gateway.md`。
+- Orbit 侧可参考：`docs/openclaw/nodes.md`、`docs/architecture/gateway/agent_call_gateway.md`。

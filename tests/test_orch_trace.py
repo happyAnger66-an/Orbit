@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from mw4agent.gateway.orch_trace import (
+from orbit.gateway.orch_trace import (
     TRACE_FILENAME,
     append_trace_events,
     orch_trace_file_path,
@@ -17,8 +17,8 @@ from mw4agent.gateway.orch_trace import (
 
 @pytest.fixture()
 def state_dir(tmp_path, monkeypatch) -> str:
-    root = str(tmp_path / ".mw4agent")
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", root)
+    root = str(tmp_path / ".orbit")
+    monkeypatch.setenv("ORBIT_STATE_DIR", root)
     return root
 
 

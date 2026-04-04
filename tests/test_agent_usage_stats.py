@@ -7,18 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.llm.backends import LLMUsage
+from orbit.llm.backends import LLMUsage
 
 
 @pytest.fixture
 def isolated_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "mw_state"
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(root))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(root))
     return root
 
 
 def test_apply_llm_usage_accumulates(isolated_state_dir: Path) -> None:
-    from mw4agent.agents.stats.agent_usage import apply_llm_usage, get_agent_stats_path, load_agent_stats
+    from orbit.agents.stats.agent_usage import apply_llm_usage, get_agent_stats_path, load_agent_stats
 
     apply_llm_usage(
         "main",
@@ -51,7 +51,7 @@ def test_apply_llm_usage_accumulates(isolated_state_dir: Path) -> None:
 
 
 def test_apply_llm_usage_concurrent(isolated_state_dir: Path) -> None:
-    from mw4agent.agents.stats.agent_usage import apply_llm_usage, load_agent_stats
+    from orbit.agents.stats.agent_usage import apply_llm_usage, load_agent_stats
 
     n = 40
     barrier = threading.Barrier(n)
@@ -77,7 +77,7 @@ def test_apply_llm_usage_concurrent(isolated_state_dir: Path) -> None:
 
 
 def test_apply_skips_empty_usage(isolated_state_dir: Path) -> None:
-    from mw4agent.agents.stats.agent_usage import apply_llm_usage, load_agent_stats
+    from orbit.agents.stats.agent_usage import apply_llm_usage, load_agent_stats
 
     apply_llm_usage("main", LLMUsage(), "openai", "m")
     st = load_agent_stats("main")

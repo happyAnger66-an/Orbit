@@ -1,11 +1,11 @@
-"""Setup script for MW4Agent"""
+"""Setup script for Orbit"""
 
 from setuptools import setup, find_packages
 
 setup(
-    name="mw4agent",
+    name="orbit",
     version="0.1.0",
-    description="Multi-WebSocket Agent CLI",
+    description="Orbit multi-agent CLI and gateway",
     packages=find_packages(),
     install_requires=[
         "click>=8.0.0",
@@ -21,7 +21,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "mw4agent=mw4agent.cli.main:main",
+            "orbit=orbit.cli.main:main",
         ],
     },
     python_requires=">=3.8",
@@ -30,10 +30,10 @@ setup(
         "socks": ["socksio>=1.0.0,<2"],
     },
     # Ensure dashboard SPA static assets are installed with the package so that
-    # FastAPI's StaticFiles mount in mw4agent.gateway.server can always find them.
+    # FastAPI's StaticFiles mount in orbit.gateway.server can always find them.
     include_package_data=True,
     package_data={
-        "mw4agent": [
+        "orbit": [
             "dashboard/static/index.html",
             "dashboard/static/app.js",
             "dashboard/static/i18n.js",

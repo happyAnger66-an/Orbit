@@ -1,6 +1,6 @@
 # Claude Code 插件代码架构与开发流程
 
-本文档基于 [anthropics/claude-code](https://github.com/anthropics/claude-code) 仓库中的插件体系与 plugin-dev 工具包，总结**插件的代码架构**（发现、激活、组件格式）与**插件开发流程**（从需求到发布），供 MW4Agent 等项目的扩展机制设计参考。
+本文档基于 [anthropics/claude-code](https://github.com/anthropics/claude-code) 仓库中的插件体系与 plugin-dev 工具包，总结**插件的代码架构**（发现、激活、组件格式）与**插件开发流程**（从需求到发布），供 Orbit 等项目的扩展机制设计参考。
 
 ---
 
@@ -198,9 +198,9 @@
 
 ---
 
-## 4. 与 MW4Agent 的对照（简要）
+## 4. 与 Orbit 的对照（简要）
 
-| 维度 | Claude Code 插件 | MW4Agent |
+| 维度 | Claude Code 插件 | Orbit |
 |------|------------------|----------|
 | 扩展单元 | 插件（含 commands/agents/skills/hooks/MCP） | 工具注册表、技能、通道、LLM 配置 |
 | 清单 | .claude-plugin/plugin.json | 无统一插件清单；工具/技能在代码或配置中注册 |
@@ -210,4 +210,4 @@
 | 钩子 | 多阶段事件 + matcher + command/prompt | 无等价钩子；可考虑在 Runner/工具执行前后加中间件 |
 | 开发流程 | 8 阶段 + plugin-dev Skills/Agents/脚本 | 代码直接扩展 + 文档（如 docs/manuals/cli.md） |
 
-Claude Code 的插件架构与 8 阶段开发流程，对 MW4Agent 设计“可插拔技能/工具/策略”和“从需求到上线的开发规范”具有参考价值；可根据 MW4Agent 的网关与多通道场景做裁剪与映射。
+Claude Code 的插件架构与 8 阶段开发流程，对 Orbit 设计“可插拔技能/工具/策略”和“从需求到上线的开发规范”具有参考价值；可根据 Orbit 的网关与多通道场景做裁剪与映射。

@@ -1,6 +1,6 @@
-# MW4Agent 使用手册（Manuals）框架
+# Orbit 使用手册（Manuals）框架
 
-本目录用于沉淀 **MW4Agent** 的使用手册，结构参考 OpenClaw 的 `docs/` 体系（CLI、Gateway、Channels、Agents、安装与运维等），但内容专注于 MW4Agent 本身。
+本目录用于沉淀 **Orbit** 的使用手册，结构参考 OpenClaw 的 `docs/` 体系（CLI、Gateway、Channels、Agents、安装与运维等），但内容专注于 Orbit 本身。
 
 > 当前仅搭建文档骨架，后续可逐步填充细节章节。
 
@@ -47,5 +47,5 @@
    - LLM 配置可引用 `../llm/provider_config.md`
    - 加密与配置读写可引用 `../crypto/README.md` / `../crypto/encryption-framework.md`
    - Gateway 行为可引用 `../gateway/README.md`
-4. **保持与 OpenClaw 文档风格相近**：章节命名和内容组织上可参考 OpenClaw 的 `docs/start/`、`docs/cli/`、`docs/gateway/` 等现有结构，但避免照搬与 MW4Agent 不相关的内容。
+4. **保持与 OpenClaw 文档风格相近**：章节命名和内容组织上可参考 OpenClaw 的 `docs/start/`、`docs/cli/`、`docs/gateway/` 等现有结构，但避免照搬与 Orbit 不相关的内容。
 

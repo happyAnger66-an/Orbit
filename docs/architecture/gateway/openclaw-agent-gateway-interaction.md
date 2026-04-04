@@ -7,7 +7,7 @@
 - Agent 运行时如何发出事件（lifecycle/assistant/tool）
 - Gateway 如何广播事件并实现 wait 语义
 
-该模型可作为 MW4Agent 后续实现 “Gateway + Agent Runner + 多通道” 的参考。
+该模型可作为 Orbit 后续实现 “Gateway + Agent Runner + 多通道” 的参考。
 
 ## 1. 总览：一次 Agent Run 的端到端链路
 
@@ -192,7 +192,7 @@ onAgentEvent((evt) => {
 });
 ```
 
-## 6. 设计要点（可迁移到 MW4Agent）
+## 6. 设计要点（可迁移到 Orbit）
 
 ### 6.1 关键数据：`runId` + `idempotencyKey`
 

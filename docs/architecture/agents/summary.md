@@ -1,6 +1,6 @@
-# MW4Agent 智能体系统实现总结
+# Orbit 智能体系统实现总结
 
-本文档总结了 MW4Agent 智能体执行系统的实现情况。
+本文档总结了 Orbit 智能体执行系统的实现情况。
 
 ## 实现概述
 
@@ -9,7 +9,7 @@
 ## 文件结构
 
 ```
-mw4agent/agents/
+orbit/agents/
 ├── __init__.py                 # 模块导出
 ├── types.py                    # 类型定义
 ├── runner/                     # 执行引擎
@@ -110,8 +110,8 @@ docs/agents/
 ### 基本使用
 
 ```python
-from mw4agent.agents import AgentRunner, SessionManager
-from mw4agent.agents.types import AgentRunParams
+from orbit.agents import AgentRunner, SessionManager
+from orbit.agents.types import AgentRunParams
 
 # 初始化
 session_manager = SessionManager("sessions.json")
@@ -131,8 +131,8 @@ print(result.payloads[0].text)
 ### 工具注册
 
 ```python
-from mw4agent.agents.tools import get_tool_registry
-from mw4agent.agents.tools.examples import EchoTool
+from orbit.agents.tools import get_tool_registry
+from orbit.agents.tools.examples import EchoTool
 
 registry = get_tool_registry()
 registry.register(EchoTool())
@@ -141,7 +141,7 @@ registry.register(EchoTool())
 ### 事件订阅
 
 ```python
-from mw4agent.agents.events import EventStream, StreamEvent
+from orbit.agents.events import EventStream, StreamEvent
 
 stream = EventStream()
 
@@ -153,7 +153,7 @@ stream.subscribe("assistant", handle_event)
 
 ## 与 OpenClaw 的对应关系
 
-| MW4Agent | OpenClaw |
+| Orbit | OpenClaw |
 |----------|----------|
 | `AgentRunner` | `runEmbeddedPiAgent` |
 | `SessionManager` | `SessionManager` |

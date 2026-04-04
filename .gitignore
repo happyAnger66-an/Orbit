@@ -10,7 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-# setuptools / distutils build outputs only — do NOT use bare ``lib/`` (would ignore e.g. ``mw4agent/desktop/lib/``)
+# setuptools / distutils build outputs only — do NOT use bare ``lib/`` (would ignore e.g. ``frontend/desktop/lib/``)
 build/lib/
 build/lib64/
 parts/
@@ -44,23 +44,23 @@ htmlcov/
 /*.json
 
 # Session store backups (tests/dev runs)
-/mw4agent.sessions.json.bak*
+/orbit.sessions.json.bak*
 
-# Desktop app (Next + Tauri) — build / dev / bundle artifacts under mw4agent/desktop/
-mw4agent/desktop/node_modules/
-mw4agent/desktop/.next/
-mw4agent/desktop/out/
-mw4agent/desktop/.turbo/
-mw4agent/desktop/.vercel/
-mw4agent/desktop/coverage/
-mw4agent/desktop/.eslintcache
-mw4agent/desktop/*.tsbuildinfo
-mw4agent/desktop/npm-debug.log*
-mw4agent/desktop/yarn-debug.log*
-mw4agent/desktop/yarn-error.log*
-mw4agent/desktop/pnpm-debug.log*
-mw4agent/desktop/.env
-mw4agent/desktop/.env.*
-!mw4agent/desktop/.env*.example
-mw4agent/desktop/src-tauri/target/
-mw4agent/desktop/src-tauri/gen/
+# Desktop app (Next + Tauri) — build / dev / bundle artifacts under frontend/desktop/
+frontend/desktop/node_modules/
+frontend/desktop/.next/
+frontend/desktop/out/
+frontend/desktop/.turbo/
+frontend/desktop/.vercel/
+frontend/desktop/coverage/
+frontend/desktop/.eslintcache
+frontend/desktop/*.tsbuildinfo
+frontend/desktop/npm-debug.log*
+frontend/desktop/yarn-debug.log*
+frontend/desktop/yarn-error.log*
+frontend/desktop/pnpm-debug.log*
+frontend/desktop/.env
+frontend/desktop/.env.*
+!frontend/desktop/.env*.example
+frontend/desktop/src-tauri/target/
+frontend/desktop/src-tauri/gen/

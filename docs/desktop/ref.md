@@ -1,6 +1,6 @@
 # Shannon Desktop 实现参考
 
-本文档基于工作区内的 **`/home/zhangxa/codes/claw/Shannon/desktop`**（及 Shannon 仓库根目录说明），概括 **Shannon Desktop** 的架构、数据流与主要技术选型，供 mw4agent 侧做桌面/Web 客户端对标或集成时参考。
+本文档基于工作区内的 **`/home/zhangxa/codes/claw/Shannon/desktop`**（及 Shannon 仓库根目录说明），概括 **Shannon Desktop** 的架构、数据流与主要技术选型，供 orbit 侧做桌面/Web 客户端对标或集成时参考。
 
 ---
 

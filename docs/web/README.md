@@ -1,4 +1,4 @@
-# MW4Agent Web 前端说明
+# Orbit Web 前端说明
 
 本文档总结当前 Dashboard（控制台 SPA）的前端能力与实现方式，便于后续扩展或对接其它 Web 界面。
 
@@ -9,13 +9,13 @@
 ### 1.1 行为概览
 
 - **支持语言**：英文（`en`）、简体中文（`zh-CN`）。
-- **存储**：当前语言保存在 `localStorage`，键名为 `mw4agent-dashboard-locale`。
+- **存储**：当前语言保存在 `localStorage`，键名为 `orbit-dashboard-locale`。
 - **默认规则**：未保存过时，根据 `navigator.language` 推断（`zh*` → 中文，否则英文）。
 - **切换**：页面右上角提供 **中文 / EN** 切换按钮，点击后立即生效并写入 `localStorage`，下次打开保持所选语言。
 
 ### 1.2 实现要点
 
-- **模块**：`mw4agent/dashboard/static/i18n.js`。
+- **模块**：`orbit/dashboard/static/i18n.js`。
 - **文案表**：`messages.en`、`messages["zh-CN"]`，key 与页面/逻辑中使用的 key 一致（如 `title`、`chat`、`placeholder`、`statusConnected` 等）。
 - **接口**：
   - `getLocale()`：当前语言。
@@ -38,13 +38,13 @@
   - **light**：浅色背景、深色文字，适合日间使用。
   - **soft-dark**：柔和深色（slate 系背景），比纯黑柔和。
   - **dark**：深色（接近原版深色），背景最深。
-- **存储**：当前主题保存在 `localStorage`，键名为 `mw4agent-dashboard-theme`。
+- **存储**：当前主题保存在 `localStorage`，键名为 `orbit-dashboard-theme`。
 - **默认规则**：未保存时，若系统为 `prefers-color-scheme: dark` 则用 `soft-dark`，否则用 `light`。
 - **切换**：页面右上角提供 **☀ / ◐ / ◇** 三个按钮，分别对应 light / soft-dark / dark，点击后立即生效并写入 `localStorage`。
 
 ### 2.2 实现要点
 
-- **模块**：`mw4agent/dashboard/static/theme.js`。
+- **模块**：`orbit/dashboard/static/theme.js`。
 - **主题应用**：通过 `document.documentElement.setAttribute("data-theme", currentTheme)` 设置根节点属性；CSS 中为 `[data-theme="light"]`、`[data-theme="soft-dark"]`、`[data-theme="dark"]` 分别定义一套 CSS 变量（如 `--bg`、`--bg-body`、`--panel`、`--text-main`、`--messages-bg`、`--msg-user-bg` 等），页面样式全部引用变量，无硬编码颜色。
 - **接口**：
   - `getTheme()`：当前主题。
@@ -63,14 +63,14 @@
 
 | 文件 | 说明 |
 |------|------|
-| `mw4agent/dashboard/static/index.html` | 单页结构、主题变量与 data-i18n 标记、语言/主题切换器 DOM |
-| `mw4agent/dashboard/static/app.js` | 入口逻辑、WebSocket/RPC、`agents.list` 多 Agent 面板、调用 `applyToPage`/`applyTheme`、切换器事件 |
-| `mw4agent/dashboard/static/i18n.js` | 多语言文案与 `t`/`applyToPage` |
-| `mw4agent/dashboard/static/theme.js` | 主题检测、`data-theme` 与 `applyTheme` |
+| `orbit/dashboard/static/index.html` | 单页结构、主题变量与 data-i18n 标记、语言/主题切换器 DOM |
+| `orbit/dashboard/static/app.js` | 入口逻辑、WebSocket/RPC、`agents.list` 多 Agent 面板、调用 `applyToPage`/`applyTheme`、切换器事件 |
+| `orbit/dashboard/static/i18n.js` | 多语言文案与 `t`/`applyToPage` |
+| `orbit/dashboard/static/theme.js` | 主题检测、`data-theme` 与 `applyTheme` |
 
-以上静态资源由 Gateway 在 `/dashboard` 下提供（见 [CLI 手册](../manuals/cli.md) 中的 Dashboard 小节），安装时通过 `setup.py` 的 `package_data` 打包进 `mw4agent` 包。
+以上静态资源由 Gateway 在 `/dashboard` 下提供（见 [CLI 手册](../manuals/cli.md) 中的 Dashboard 小节），安装时通过 `setup.py` 的 `package_data` 打包进 `orbit` 包。
 
 ### 3.1 Agents 标签页
 
 - 右侧面板 **Agents** 通过 `POST /rpc` 调用 `method: "agents.list"`，展示各 `agentId` 的 `agent_dir`、`workspace_dir`、会话存储路径，以及 Gateway 进程内该 Agent 的 **运行状态**（`idle` / `running`、活动运行数、最近一次完成的 `run` 摘要）。
-- 后端实现：`mw4agent/gateway/server.py`（`agents.list`）；运行状态来自 `GatewayState` 中与 `agent_id` 关联的 `RunRecord`。
+- 后端实现：`orbit/gateway/server.py`（`agents.list`）；运行状态来自 `GatewayState` 中与 `agent_id` 关联的 `RunRecord`。

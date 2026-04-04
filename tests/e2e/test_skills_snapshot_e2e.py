@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.agents.types import AgentRunParams
-from mw4agent.skills.manager import _default_skill_manager
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.agents.types import AgentRunParams
+from orbit.skills.manager import _default_skill_manager
 
 
 @pytest.mark.asyncio
@@ -18,8 +18,8 @@ async def test_skills_snapshot_attached_and_used(tmp_path: Path, monkeypatch) ->
     """End-to-end: skill snapshot is attached to session and consumed by LLM."""
 
     # Patch build_skill_snapshot so the test is independent of the real skills dir.
-    import mw4agent.agents.skills.snapshot as snapshot_mod
-    import mw4agent.agents.runner.runner as runner_mod
+    import orbit.agents.skills.snapshot as snapshot_mod
+    import orbit.agents.runner.runner as runner_mod
 
     def _fake_build_skill_snapshot(*args, **kwargs):
         prompt = "Available skills:\n- demo_skill: Test skill that should appear in the LLM prompt."

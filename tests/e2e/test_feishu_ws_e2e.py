@@ -5,8 +5,8 @@ import types
 
 import pytest
 
-from mw4agent.channels.plugins.feishu import FeishuChannel
-from mw4agent.channels.types import InboundContext
+from orbit.channels.plugins.feishu import FeishuChannel
+from orbit.channels.types import InboundContext
 
 
 @pytest.mark.asyncio

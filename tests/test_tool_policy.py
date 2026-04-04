@@ -7,8 +7,8 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from mw4agent.agents.tools.base import AgentTool
-from mw4agent.agents.tools.policy import (
+from orbit.agents.tools.base import AgentTool
+from orbit.agents.tools.policy import (
     ToolPolicyConfig,
     SandboxToolPolicy,
     filter_tools_by_policy,

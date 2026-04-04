@@ -8,10 +8,10 @@ import types
 
 import pytest
 
-from mw4agent.agents.agent_manager import AgentManager
-from mw4agent.agents.types import AgentPayload, AgentRunMeta, AgentRunResult, AgentRunStatus
-from mw4agent.gateway.orchestrator import Orchestrator, _parse_supervisor_decision
-from mw4agent.llm.backends import LLMUsage
+from orbit.agents.agent_manager import AgentManager
+from orbit.agents.types import AgentPayload, AgentRunMeta, AgentRunResult, AgentRunStatus
+from orbit.gateway.orchestrator import Orchestrator, _parse_supervisor_decision
+from orbit.llm.backends import LLMUsage
 
 
 class _FakeRunner:
@@ -25,11 +25,11 @@ class _FakeRunner:
 
 @pytest.fixture()
 def orch(tmp_path, monkeypatch) -> Orchestrator:
-    monkeypatch.setenv("MW4AGENT_STATE_DIR", str(tmp_path / ".mw4agent"))
+    monkeypatch.setenv("ORBIT_STATE_DIR", str(tmp_path / ".orbit"))
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    (cfg_dir / "mw4agent.json").write_text(json.dumps({"llm": {"provider": "echo"}}), encoding="utf-8")
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    (cfg_dir / "orbit.json").write_text(json.dumps({"llm": {"provider": "echo"}}), encoding="utf-8")
     return Orchestrator(agent_manager=AgentManager(), runner=_FakeRunner())
 
 
@@ -57,7 +57,7 @@ async def test_supervisor_pipeline_two_strokes_then_stop(orch: Orchestrator, mon
     def fake_chat(*_a, **_kw):
         return next(replies), LLMUsage()
 
-    monkeypatch.setattr("mw4agent.gateway.orchestrator._call_openai_chat", fake_chat)
+    monkeypatch.setattr("orbit.gateway.orchestrator._call_openai_chat", fake_chat)
 
     st = orch.create(
         session_key="sk",
@@ -110,7 +110,7 @@ async def test_supervisor_llm_retries_then_ok(orch: Orchestrator, monkeypatch) -
         types.MethodType(flaky_supervisor_llm, orch),
     )
     monkeypatch.setattr(
-        "mw4agent.gateway.orchestrator._supervisor_retry_delay",
+        "orbit.gateway.orchestrator._supervisor_retry_delay",
         no_delay,
     )
 

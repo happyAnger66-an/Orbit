@@ -1,10 +1,10 @@
-# MW4Agent 智能体执行系统架构
+# Orbit 智能体执行系统架构
 
-本文档说明 MW4Agent 智能体执行系统的架构设计，参考 OpenClaw 的 agents 系统实现。
+本文档说明 Orbit 智能体执行系统的架构设计，参考 OpenClaw 的 agents 系统实现。
 
 ## 1. 系统概述
 
-MW4Agent 智能体执行系统是一个**可扩展的智能体运行时**，支持：
+Orbit 智能体执行系统是一个**可扩展的智能体运行时**，支持：
 
 - **会话管理**：管理智能体会话和对话历史
 - **工具系统**：可扩展的工具注册和执行机制
@@ -306,7 +306,7 @@ class AgentRunMeta:
 
 ## 5. 与 OpenClaw 的对比
 
-| 组件 | OpenClaw (TypeScript) | MW4Agent (Python) |
+| 组件 | OpenClaw (TypeScript) | Orbit (Python) |
 |------|----------------------|-------------------|
 | 执行引擎 | `runEmbeddedPiAgent` | `AgentRunner.run()` |
 | 会话管理 | `SessionManager` | `SessionManager` |
@@ -320,9 +320,9 @@ class AgentRunMeta:
 ### 6.1 基本使用
 
 ```python
-from mw4agent.agents import AgentRunner
-from mw4agent.agents.session import SessionManager
-from mw4agent.agents.types import AgentRunParams
+from orbit.agents import AgentRunner
+from orbit.agents.session import SessionManager
+from orbit.agents.types import AgentRunParams
 
 # 初始化
 session_manager = SessionManager("sessions.json")
@@ -344,8 +344,8 @@ print(result.payloads[0].text)
 ### 6.2 工具注册和使用
 
 ```python
-from mw4agent.agents.tools import get_tool_registry
-from mw4agent.agents.tools.examples import EchoTool
+from orbit.agents.tools import get_tool_registry
+from orbit.agents.tools.examples import EchoTool
 
 # 注册工具
 registry = get_tool_registry()
@@ -357,7 +357,7 @@ registry.register(EchoTool())
 ### 6.3 事件订阅
 
 ```python
-from mw4agent.agents.events import EventStream, StreamEvent
+from orbit.agents.events import EventStream, StreamEvent
 
 stream = EventStream()
 
@@ -375,7 +375,7 @@ stream.subscribe("assistant", handle_assistant)
 ### 7.1 添加新工具
 
 ```python
-from mw4agent.agents.tools import AgentTool, ToolResult
+from orbit.agents.tools import AgentTool, ToolResult
 
 class MyTool(AgentTool):
     def __init__(self):
@@ -402,7 +402,7 @@ registry.register(MyTool())
 ### 7.2 自定义事件处理器
 
 ```python
-from mw4agent.agents.events import StreamHandler, StreamEvent
+from orbit.agents.events import StreamHandler, StreamEvent
 
 class MyHandler(StreamHandler):
     async def handle(self, event: StreamEvent):
@@ -471,7 +471,7 @@ stream.add_handler(MyHandler())
 
 ## 11. 总结
 
-MW4Agent 智能体执行系统参考 OpenClaw 的设计，提供了：
+Orbit 智能体执行系统参考 OpenClaw 的设计，提供了：
 
 - ✅ **核心执行引擎**：AgentRunner
 - ✅ **会话管理**：SessionManager

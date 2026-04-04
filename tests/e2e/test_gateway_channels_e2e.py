@@ -24,15 +24,15 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.agents.runner.runner import AgentRunner
-from mw4agent.agents.session.manager import SessionManager
-from mw4agent.channels.dispatcher import ChannelDispatcher, ChannelRuntime
-from mw4agent.channels.registry import ChannelRegistry
-from mw4agent.channels.dock import ChannelDock
-from mw4agent.channels.types import ChannelCapabilities, ChannelMeta, OutboundPayload
-from mw4agent.channels.plugins.base import ChannelPlugin
-from mw4agent.channels.types import InboundContext
-from mw4agent.channels.plugins.console import ConsoleChannel
+from orbit.agents.runner.runner import AgentRunner
+from orbit.agents.session.manager import SessionManager
+from orbit.channels.dispatcher import ChannelDispatcher, ChannelRuntime
+from orbit.channels.registry import ChannelRegistry
+from orbit.channels.dock import ChannelDock
+from orbit.channels.types import ChannelCapabilities, ChannelMeta, OutboundPayload
+from orbit.channels.plugins.base import ChannelPlugin
+from orbit.channels.types import InboundContext
+from orbit.channels.plugins.console import ConsoleChannel
 
 
 def _find_free_port() -> int:
@@ -75,10 +75,10 @@ def gateway_process(tmp_path: Path):
     base_url = f"http://127.0.0.1:{port}"
     session_file = str(tmp_path / "gateway.sessions.json")
     # Isolate gateway subprocess from developer machine config/state.
-    state_dir = tmp_path / ".mw4agent"
+    state_dir = tmp_path / ".orbit"
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    (cfg_dir / "mw4agent.json").write_text(
+    (cfg_dir / "orbit.json").write_text(
         json.dumps({"llm": {"provider": "echo", "model_id": "echo"}}),
         encoding="utf-8",
     )
@@ -86,7 +86,7 @@ def gateway_process(tmp_path: Path):
     cmd = [
         sys.executable,
         "-m",
-        "mw4agent",
+        "orbit",
         "gateway",
         "run",
         "--bind",
@@ -104,8 +104,8 @@ def gateway_process(tmp_path: Path):
         text=True,
         env={
             **dict(os.environ),
-            "MW4AGENT_STATE_DIR": str(state_dir),
-            "MW4AGENT_CONFIG_DIR": str(cfg_dir),
+            "ORBIT_STATE_DIR": str(state_dir),
+            "ORBIT_CONFIG_DIR": str(cfg_dir),
         },
     )
 

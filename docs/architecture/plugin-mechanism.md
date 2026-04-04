@@ -1,6 +1,6 @@
-# MW4Agent 插件机制设计与实现方案
+# Orbit 插件机制设计与实现方案
 
-本文档描述在 MW4Agent 中实现**类似 Claude Code 的插件机制**的设计与分阶段实现思路，用于扩展 Agent 能力（工具、技能、可选钩子），同时与现有 ToolRegistry、SkillManager、Runner 对接。
+本文档描述在 Orbit 中实现**类似 Claude Code 的插件机制**的设计与分阶段实现思路，用于扩展 Agent 能力（工具、技能、可选钩子），同时与现有 ToolRegistry、SkillManager、Runner 对接。
 
 ---
 
@@ -14,7 +14,7 @@
 
 **非目标（首版）**
 
-- 不实现「斜杠命令」（MW4Agent 无终端交互）；若需要可后续通过 Gateway RPC 或通道语义映射。
+- 不实现「斜杠命令」（Orbit 无终端交互）；若需要可后续通过 Gateway RPC 或通道语义映射。
 - 不实现 MCP 协议集成；插件内工具以 Python 类注册到 ToolRegistry 为主。
 - 不做进程级沙箱；插件代码与主进程同进程运行，视为受信扩展。
 
@@ -25,7 +25,7 @@
 | 扩展点 | 现状 | 插件可接入方式 |
 |--------|------|----------------|
 | **Tools** | ToolRegistry 单例，builtin 在 `agents/tools/__init__.py` 里 register | 插件在加载时调用 `get_tool_registry().register(tool)` |
-| **Skills** | SkillManager 从 `~/.mw4agent/skills/` 读 JSON/MD，`build_skill_snapshot()` 拼 prompt | 插件提供额外 skills 目录或通过「插件 skill 源」注入到 snapshot |
+| **Skills** | SkillManager 从 `~/orbit/skills/` 读 JSON/MD，`build_skill_snapshot()` 拼 prompt | 插件提供额外 skills 目录或通过「插件 skill 源」注入到 snapshot |
 | **Runner** | 无钩子；直接取 registry 与 skill snapshot | 可选：Runner 支持 pre_tool/post_tool/session_start 等钩子，插件注册回调 |
 | **CLI** | CommandEntry + register_commands | 可选：插件通过 entry_points 或 manifest 声明 CLI 子命令 |
 
@@ -73,7 +73,7 @@ my-plugin/
 **路径与可移植性**
 
 - 清单与 `tools_module`、`skills_dir` 均为相对**插件根目录**。
-- 加载时会将插件根目录加入 `sys.path` 或使用 `importlib.util.spec_from_file_location` 加载 `tools_module`，并在调用 `register_tools(registry)` 时注入 `plugin_root`（环境变量或参数），便于插件内脚本、资源使用绝对路径（如 `${PLUGIN_ROOT}` 或 `os.environ.get("MW4AGENT_PLUGIN_ROOT")`）。
+- 加载时会将插件根目录加入 `sys.path` 或使用 `importlib.util.spec_from_file_location` 加载 `tools_module`，并在调用 `register_tools(registry)` 时注入 `plugin_root`（环境变量或参数），便于插件内脚本、资源使用绝对路径（如 `${PLUGIN_ROOT}` 或 `os.environ.get("ORBIT_PLUGIN_ROOT")`）。
 
 ---
 
@@ -81,7 +81,7 @@ my-plugin/
 
 **发现**
 
-- **插件目录**：通过环境变量 `MW4AGENT_PLUGIN_DIR`（多个路径用 `:` 或 `,` 分隔）或配置文件（如 `~/.mw4agent/config.json` 中 `plugin_dirs: []`）指定。
+- **插件目录**：通过环境变量 `ORBIT_PLUGIN_DIR`（多个路径用 `:` 或 `,` 分隔）或配置文件（如 `~/orbit/config.json` 中 `plugin_dirs: []`）指定。
 - 每个指定目录下：
   - 若该目录本身包含 `plugin.json`，则视为**单个插件根**；
   - 否则扫描其子目录，每个包含 `plugin.json` 的子目录视为一个插件根。
@@ -126,8 +126,8 @@ my-plugin/
 
 ```python
 # my_plugin/tools.py
-from mw4agent.agents.tools import get_tool_registry
-from mw4agent.agents.tools.base import AgentTool, ToolResult
+from orbit.agents.tools import get_tool_registry
+from orbit.agents.tools.base import AgentTool, ToolResult
 
 class MyTool(AgentTool):
     def __init__(self):
@@ -177,7 +177,7 @@ def _load_plugin_tools(plugin_root: Path, tools_module_name: str) -> None:
 
 ## 8. 配置与安全
 
-- **启用/禁用**：通过配置或环境变量（如 `MW4AGENT_PLUGINS_ENABLED=my-plugin,other`）限制只加载列出的插件；未列出的不加载。
+- **启用/禁用**：通过配置或环境变量（如 `ORBIT_PLUGINS_ENABLED=my-plugin,other`）限制只加载列出的插件；未列出的不加载。
 - **冲突**：工具名与已有（含内置）冲突时，建议报错并拒绝加载该插件，避免静默覆盖。
 - **权限**：插件与主进程同进程，具备相同权限；文档中明确「插件为受信扩展，请仅加载可信来源」。
 - **依赖**：插件若依赖第三方库，需在插件目录内注明（如 requirements.txt），由部署方自行安装；或支持在 manifest 中声明 `dependencies: []`，由 CLI 提示安装（后续增强）。
@@ -188,22 +188,22 @@ def _load_plugin_tools(plugin_root: Path, tools_module_name: str) -> None:
 
 **阶段 1：发现 + 清单 + Tools**（已实现）
 
-1. 新增 `mw4agent/plugin/` 包：  
-   - `loader.py`：扫描 `MW4AGENT_PLUGIN_DIR`（环境变量，多路径用 `:` 或 `,` 分隔）或显式传入 `plugin_dirs`，解析 `plugin.json`，返回 `List[PluginInfo]`。  
-   - 对每个插件，若存在 `tools_module`，使用 `importlib.util.spec_from_file_location` 动态加载并调用 `register_tools(registry)` 或 `register(registry)`；调用前设置 `MW4AGENT_PLUGIN_ROOT` 环境变量。  
+1. 新增 `orbit/plugin/` 包：  
+   - `loader.py`：扫描 `ORBIT_PLUGIN_DIR`（环境变量，多路径用 `:` 或 `,` 分隔）或显式传入 `plugin_dirs`，解析 `plugin.json`，返回 `List[PluginInfo]`。  
+   - 对每个插件，若存在 `tools_module`，使用 `importlib.util.spec_from_file_location` 动态加载并调用 `register_tools(registry)` 或 `register(registry)`；调用前设置 `ORBIT_PLUGIN_ROOT` 环境变量。  
 2. 在 Gateway `create_app()` 开头调用 `load_plugins()`，仅做工具注册。  
 3. 单元测试：`tests/test_plugin_loader.py`；最小示例插件：`tests/fixtures/plugins/echo_plugin/`（含 `plugin.json` 与 `tools.py` 注册 `echo` 工具）。
 
 **阶段 2：Skills 合并**（已实现）
 
-4. 新增 `PluginSkillSource`（`mw4agent/plugin/loader.py`）：维护 `_dirs: List[Path]`，提供 `add_dir(path)`、`read_all_skills()`；单目录内与 SkillManager 相同约定（`*.json`、`*.md`、`<name>/SKILL.md`），读取为明文 JSON 或 `parse_skill_markdown`。  
+4. 新增 `PluginSkillSource`（`orbit/plugin/loader.py`）：维护 `_dirs: List[Path]`，提供 `add_dir(path)`、`read_all_skills()`；单目录内与 SkillManager 相同约定（`*.json`、`*.md`、`<name>/SKILL.md`），读取为明文 JSON 或 `parse_skill_markdown`。  
 5. `load_plugins()` 中：对每个带 `skills_dir` 的插件调用 `get_plugin_skill_source().add_dir(plugin.root / skills_dir)`。  
 6. 修改 `build_skill_snapshot()`：先取默认 SkillManager 的 `read_all_skills()`，再取 `get_plugin_skill_source().read_all_skills()`，合并时**主 skills 优先**（同名保留默认），再生成 prompt。  
 7. 测试：`tests/fixtures/plugins/skill_plugin/`（含 `skills_dir: "skills"`、`skills/hello/SKILL.md`）；`test_plugin_skill_source_read_all_skills`、`test_load_plugins_adds_skills_dir`、`test_build_skill_snapshot_merges_plugin_skills`。
 
 **阶段 3：配置与文档**（已实现）
 
-7. 在根配置 `~/.mw4agent/mw4agent.json` 的 **plugins** 段中支持 `plugin_dirs`（路径列表）、`plugins_enabled`（可选，插件名白名单）。发现时：未设置 `MW4AGENT_PLUGIN_DIR` 则使用配置中的 `plugin_dirs`；加载时若配置了 `plugins_enabled` 则仅加载名单内插件。  
+7. 在根配置 `~/orbit/orbit.json` 的 **plugins** 段中支持 `plugin_dirs`（路径列表）、`plugins_enabled`（可选，插件名白名单）。发现时：未设置 `ORBIT_PLUGIN_DIR` 则使用配置中的 `plugin_dirs`；加载时若配置了 `plugins_enabled` 则仅加载名单内插件。  
 8. 文档：**[docs/architecture/plugins.md](plugins.md)** 说明插件目录结构、清单字段、`register_tools` 约定、skills_dir 约定、配置项及安全注意点；[docs/manuals/cli.md](../manuals/cli.md) 中增加「插件」小节并链接至 plugins.md。
 
 **阶段 4（可选）：Hooks**
@@ -229,7 +229,7 @@ my-agent-tools/
 {
   "name": "my-agent-tools",
   "version": "0.1.0",
-  "description": "Example tools for MW4Agent",
+  "description": "Example tools for Orbit",
   "tools_module": "tools"
 }
 ```
@@ -237,8 +237,8 @@ my-agent-tools/
 **tools.py**
 
 ```python
-from mw4agent.agents.tools import get_tool_registry
-from mw4agent.agents.tools.base import AgentTool, ToolResult
+from orbit.agents.tools import get_tool_registry
+from orbit.agents.tools.base import AgentTool, ToolResult
 
 class EchoTool(AgentTool):
     def __init__(self):
@@ -258,14 +258,14 @@ def register_tools(registry=None):
 
 **使用**
 
-- 设置 `MW4AGENT_PLUGIN_DIR=/path/to/my-agent-tools`（或将该目录放到一个扫描目录下）。  
+- 设置 `ORBIT_PLUGIN_DIR=/path/to/my-agent-tools`（或将该目录放到一个扫描目录下）。  
 - 启动 Gateway；Runner 调用 `get_tool_definitions()` 时会包含 `echo`，LLM 可发起对 `echo` 的调用。
 
 ---
 
 ## 11. 与 Claude Code 的对应关系
 
-| Claude Code 插件 | MW4Agent 插件（本方案） |
+| Claude Code 插件 | Orbit 插件（本方案） |
 |-----------------|-------------------------|
 | .claude-plugin/plugin.json | plugin.json（插件根目录） |
 | commands/ | 暂无；可后续用 RPC/通道语义映射 |
@@ -273,6 +273,6 @@ def register_tools(registry=None):
 | skills/*/SKILL.md | skills_dir 下相同约定 |
 | hooks/hooks.json | 预留 hooks_module（第二阶段） |
 | MCP | 未纳入；工具以 Python 类注册为主 |
-| ${CLAUDE_PLUGIN_ROOT} | 通过参数或 MW4AGENT_PLUGIN_ROOT 传入插件根 |
+| ${CLAUDE_PLUGIN_ROOT} | 通过参数或 ORBIT_PLUGIN_ROOT 传入插件根 |
 
-本方案实现后，MW4Agent 即可通过「插件目录 + 清单 + tools_module + skills_dir」扩展 Agent 的工具与技能，并在后续按需增加 Hooks 与配置策略，逐步逼近 Claude Code 的插件能力子集。
+本方案实现后，Orbit 即可通过「插件目录 + 清单 + tools_module + skills_dir」扩展 Agent 的工具与技能，并在后续按需增加 Hooks 与配置策略，逐步逼近 Claude Code 的插件能力子集。

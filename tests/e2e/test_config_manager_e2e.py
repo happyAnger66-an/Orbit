@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from mw4agent.config import ConfigManager, get_default_config_manager
-from mw4agent.crypto import EncryptionConfigError, get_default_encrypted_store
+from orbit.config import ConfigManager, get_default_config_manager
+from orbit.crypto import EncryptionConfigError, get_default_encrypted_store
 
 
 @pytest.fixture
@@ -29,8 +29,8 @@ def config_manager(temp_config_dir: Path) -> ConfigManager:
 def secret_key(monkeypatch) -> str:
     """Set up a test secret key and ensure encryption is enabled."""
     key = base64.b64encode(os.urandom(32)).decode("ascii")
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", key)
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "1")  # 确保加密开启，不受外部环境影响
+    monkeypatch.setenv("ORBIT_SECRET_KEY", key)
+    monkeypatch.setenv("ORBIT_IS_ENC", "1")  # 确保加密开启，不受外部环境影响
     return key
 
 
@@ -54,7 +54,7 @@ def test_config_manager_write_read_encrypted(config_manager: ConfigManager, secr
     config_path = config_manager._get_config_path("test_config")
     assert config_path.exists()
     raw_content = config_path.read_bytes()
-    assert raw_content.startswith(b"MW4AGENT_ENC_v1\n")
+    assert raw_content.startswith(b"ORBIT_ENC_v1\n")
 
     # Read config (should decrypt automatically)
     loaded_data = config_manager.read_config("test_config")
@@ -102,10 +102,10 @@ def test_config_manager_plaintext_fallback(config_manager: ConfigManager, monkey
     """Test fallback to plaintext when encryption is not configured."""
     # Remove encryption key to force plaintext fallback
     # Also need to clear the cached store
-    from mw4agent.crypto.secure_io import _default_store
-    import mw4agent.crypto.secure_io
-    monkeypatch.delenv("MW4AGENT_SECRET_KEY", raising=False)
-    monkeypatch.setattr(mw4agent.crypto.secure_io, "_default_store", None)
+    from orbit.crypto.secure_io import _default_store
+    import orbit.crypto.secure_io
+    monkeypatch.delenv("ORBIT_SECRET_KEY", raising=False)
+    monkeypatch.setattr(orbit.crypto.secure_io, "_default_store", None)
     
     config_data = {"key": "value"}
 
@@ -116,7 +116,7 @@ def test_config_manager_plaintext_fallback(config_manager: ConfigManager, monkey
     config_path = config_manager._get_config_path("plaintext_config")
     assert config_path.exists()
     raw_content = config_path.read_bytes()
-    assert not raw_content.startswith(b"MW4AGENT_ENC_v1\n"), f"File should be plaintext but starts with magic header: {raw_content[:50]}"
+    assert not raw_content.startswith(b"ORBIT_ENC_v1\n"), f"File should be plaintext but starts with magic header: {raw_content[:50]}"
 
     # Read should work (fallback enabled by default)
     loaded_data = config_manager.read_config("plaintext_config")
@@ -127,11 +127,11 @@ def test_encrypted_config_missing_key_refuses_overwrite(config_manager: ConfigMa
     """If encryption is enabled but key is missing, refuse to overwrite encrypted config."""
     # First write an encrypted file with a valid key.
     import base64
-    from mw4agent.crypto.secure_io import MAGIC_HEADER
+    from orbit.crypto.secure_io import MAGIC_HEADER
 
     key = base64.b64encode(os.urandom(32)).decode("ascii")
-    monkeypatch.setenv("MW4AGENT_SECRET_KEY", key)
-    monkeypatch.setenv("MW4AGENT_IS_ENC", "1")
+    monkeypatch.setenv("ORBIT_SECRET_KEY", key)
+    monkeypatch.setenv("ORBIT_IS_ENC", "1")
     config_manager.write_config("protected", {"llm": {"provider": "openai", "model_id": "gpt-4o-mini"}})
 
     cfg_path = config_manager._get_config_path("protected")
@@ -139,9 +139,9 @@ def test_encrypted_config_missing_key_refuses_overwrite(config_manager: ConfigMa
     assert before.startswith(MAGIC_HEADER)
 
     # Now simulate a restart where encryption remains enabled but key is missing.
-    monkeypatch.delenv("MW4AGENT_SECRET_KEY", raising=False)
-    import mw4agent.crypto.secure_io
-    monkeypatch.setattr(mw4agent.crypto.secure_io, "_default_store", None)
+    monkeypatch.delenv("ORBIT_SECRET_KEY", raising=False)
+    import orbit.crypto.secure_io
+    monkeypatch.setattr(orbit.crypto.secure_io, "_default_store", None)
 
     # Reading should raise (do not silently fall back to plaintext for encrypted files).
     with pytest.raises(Exception):
@@ -157,9 +157,9 @@ def test_encrypted_config_missing_key_refuses_overwrite(config_manager: ConfigMa
 
 def test_get_default_config_manager(tmp_path: Path, monkeypatch, secret_key: str) -> None:
     """Test get_default_config_manager returns a singleton."""
-    cfg_dir = tmp_path / ".mw4agent"
-    monkeypatch.setenv("MW4AGENT_CONFIG_DIR", str(cfg_dir))
-    import mw4agent.config.manager as cfg_mod
+    cfg_dir = tmp_path / ".orbit"
+    monkeypatch.setenv("ORBIT_CONFIG_DIR", str(cfg_dir))
+    import orbit.config.manager as cfg_mod
     cfg_mod._default_config_manager = None  # type: ignore[attr-defined]
 
     mgr1 = get_default_config_manager()

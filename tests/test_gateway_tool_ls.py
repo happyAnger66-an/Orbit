@@ -15,12 +15,12 @@ import time
 import urllib.request
 import json
 
-# Ensure local repo sources take precedence over any installed mw4agent package.
+# Ensure local repo sources take precedence over any installed orbit package.
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from mw4agent.agents.tools.gateway_tool import GatewayLsTool
+from orbit.agents.tools.gateway_tool import GatewayLsTool
 
 
 def _find_free_port() -> int:
@@ -45,12 +45,12 @@ def _wait_health(base_url: str, deadline_s: float = 8.0) -> None:
 async def main_async() -> None:
     port = _find_free_port()
     base_url = f"http://127.0.0.1:{port}"
-    session_file = "/tmp/mw4agent.test.gateway.ls.sessions.json"
+    session_file = "/tmp/orbit.test.gateway.ls.sessions.json"
 
     cmd = [
         sys.executable,
         "-m",
-        "mw4agent",
+        "orbit",
         "gateway",
         "run",
         "--bind",
