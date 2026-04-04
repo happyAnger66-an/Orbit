@@ -525,9 +525,11 @@ export async function readAgentWorkspaceFile(
   agentId: string,
   path: string
 ): Promise<ReadAgentWorkspaceFileResult> {
+  const p = path.trim();
   const r = await callRpc("agents.workspace_file.read", {
     agentId: agentId.trim(),
-    path: path.trim(),
+    path: p,
+    name: p,
   });
   if (!r.ok || !r.payload) {
     return { ok: false, error: r.error?.message || "agents.workspace_file.read failed" };
@@ -549,9 +551,11 @@ export async function writeAgentWorkspaceFile(
   path: string,
   text: string
 ): Promise<WriteAgentWorkspaceFileResult> {
+  const p = path.trim();
   const r = await callRpc("agents.workspace_file.write", {
     agentId: agentId.trim(),
-    path: path.trim(),
+    path: p,
+    name: p,
     text,
   });
   if (!r.ok || !r.payload) {
@@ -898,6 +902,26 @@ export async function orchestrateDelete(orchId: string): Promise<OrchestrateDele
     return { ok: false, error: r.error?.message || "orchestrate.delete failed" };
   }
   return { ok: true, deleted: Boolean(r.payload.deleted) };
+}
+
+export type OrchestrateResetResult =
+  | { ok: true; orchId: string; status: string; sessionKey: string; currentRound: number }
+  | { ok: false; error?: string };
+
+/** Clear orchestration transcript and agent session ids (rewrites orch.json); removes trace.jsonl. */
+export async function orchestrateReset(orchId: string): Promise<OrchestrateResetResult> {
+  const r = await callRpc("orchestrate.reset", { orchId: orchId.trim() });
+  if (!r.ok || !r.payload) {
+    return { ok: false, error: r.error?.message || "orchestrate.reset failed" };
+  }
+  const p = r.payload;
+  return {
+    ok: true,
+    orchId: String(p.orchId ?? ""),
+    status: String(p.status ?? ""),
+    sessionKey: String(p.sessionKey ?? ""),
+    currentRound: Number(p.currentRound ?? 0),
+  };
 }
 
 export type OrchestrateRouterLlmPublic = {

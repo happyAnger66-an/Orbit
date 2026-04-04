@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   orchestrateGet,
   orchestrateList,
@@ -25,6 +25,26 @@ function payloadPreviewJson(payload: unknown): string {
   }
 }
 
+function traceEventTsMs(ev: OrchTraceEvent): number | null {
+  const raw = ev.ts;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+    const p = Date.parse(raw);
+    if (Number.isFinite(p)) return p;
+  }
+  return null;
+}
+
+/** Parse `<input type="datetime-local">` value; returns ms or null if empty/invalid. */
+function parseDatetimeLocalMs(value: string): number | null {
+  const v = value.trim();
+  if (!v) return null;
+  const ms = new Date(v).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 export function TracePanel() {
   const { t } = useI18n();
   const [orches, setOrches] = useState<OrchestrateListItem[]>([]);
@@ -34,6 +54,8 @@ export function TracePanel() {
   const [traceEnabled, setTraceEnabled] = useState<boolean | null>(null);
   const [traceSeq, setTraceSeq] = useState(0);
   const [events, setEvents] = useState<OrchTraceEvent[]>([]);
+  const [traceFilterStart, setTraceFilterStart] = useState("");
+  const [traceFilterEnd, setTraceFilterEnd] = useState("");
   const [expandedSeq, setExpandedSeq] = useState<number | null>(null);
   const afterSeqRef = useRef(-1);
 
@@ -55,6 +77,8 @@ export function TracePanel() {
     const id = selectedOrchId.trim();
     afterSeqRef.current = -1;
     setEvents([]);
+    setTraceFilterStart("");
+    setTraceFilterEnd("");
     setExpandedSeq(null);
     setTraceEnabled(null);
     setStatus("");
@@ -106,6 +130,26 @@ export function TracePanel() {
     setEvents([]);
     setExpandedSeq(null);
   }, []);
+
+  const { filteredEvents, traceTimeFilterApplied } = useMemo(() => {
+    const startMs = parseDatetimeLocalMs(traceFilterStart);
+    const endMsRaw = parseDatetimeLocalMs(traceFilterEnd);
+    // datetime-local is minute-precision; include the full end minute.
+    const endMs = endMsRaw != null ? endMsRaw + 60 * 1000 - 1 : null;
+    const applied = startMs != null || endMsRaw != null;
+    if (!applied) return { filteredEvents: events, traceTimeFilterApplied: false };
+    const filtered = events.filter((ev) => {
+      const ts = traceEventTsMs(ev);
+      if (ts == null) return false;
+      if (startMs != null && ts < startMs) return false;
+      if (endMs != null && ts > endMs) return false;
+      return true;
+    });
+    return { filteredEvents: filtered, traceTimeFilterApplied: true };
+  }, [events, traceFilterStart, traceFilterEnd]);
+
+  const traceTimeFilterInputsDirty =
+    traceFilterStart.trim() !== "" || traceFilterEnd.trim() !== "";
 
   const selectedTitle = (() => {
     const o = orches.find((x) => x.orchId === selectedOrchId);
@@ -202,14 +246,51 @@ export function TracePanel() {
               </span>
               <span>
                 {t("traceEventsLoaded")}: {events.length}
+                {traceTimeFilterApplied && events.length > 0
+                  ? ` · ${t("traceFilterShowing", { filtered: filteredEvents.length, total: events.length })}`
+                  : ""}
               </span>
+            </div>
+            <div className="flex flex-wrap items-end gap-3 text-xs">
+              <label className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] text-[var(--muted)]">{t("traceFilterStart")}</span>
+                <input
+                  type="datetime-local"
+                  value={traceFilterStart}
+                  onChange={(e) => setTraceFilterStart(e.target.value)}
+                  className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] font-mono text-[11px] max-w-full"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] text-[var(--muted)]">{t("traceFilterEnd")}</span>
+                <input
+                  type="datetime-local"
+                  value={traceFilterEnd}
+                  onChange={(e) => setTraceFilterEnd(e.target.value)}
+                  className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] font-mono text-[11px] max-w-full"
+                />
+              </label>
+              {traceTimeFilterInputsDirty ? (
+                <button
+                  type="button"
+                  className="text-[10px] px-2 py-1 rounded border border-[var(--border)] bg-[var(--panel)] hover:opacity-90 shrink-0"
+                  onClick={() => {
+                    setTraceFilterStart("");
+                    setTraceFilterEnd("");
+                  }}
+                >
+                  {t("traceFilterClear")}
+                </button>
+              ) : null}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--panel)] p-3 space-y-0">
               {events.length === 0 ? (
                 <p className="text-xs text-[var(--muted)] py-6 text-center">{t("orchestrateTraceEmpty")}</p>
+              ) : traceTimeFilterApplied && filteredEvents.length === 0 ? (
+                <p className="text-xs text-[var(--muted)] py-6 text-center">{t("traceFilterNoMatches")}</p>
               ) : (
                 <ul className="relative pl-4 border-l-2 border-[var(--border)] space-y-3 ml-2 py-1">
-                  {events.map((ev, i) => {
+                  {filteredEvents.map((ev, i) => {
                     const seq = ev.seq != null ? Number(ev.seq) : i;
                     const typ = String(ev.type ?? "?");
                     const tsRaw = ev.ts;

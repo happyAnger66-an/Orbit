@@ -393,7 +393,7 @@ Serper 示例：
 
 这些属于“运行时路径布局”，不在 root config 中配置：
 
-- **`ORBIT_STATE_DIR`**：状态目录（默认 `~/.orbit`）
+- **`ORBIT_STATE_DIR`**：状态目录（默认 `~/.orbit`）。未设置时会在已存在的 `~/.orbit` 与 `~/orbit` 中选一个，否则使用 `~/.orbit`；**不会**再自动选用旧的 `~/.mw4agent`，若仍需该目录请显式设置 `MW4AGENT_STATE_DIR`（或迁移数据到 `~/.orbit`）。
 - **`ORBIT_WORKSPACE_DIR`**：workspace 目录全局覆盖（默认 `~/.orbit/agents/<agentId>/workspace`，不建议轻易覆盖多 agent 情况）
 
 ### 7.1 Gateway 编排（orchestrator）与长期记忆路径

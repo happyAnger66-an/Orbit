@@ -2,13 +2,14 @@
 
 import Image from "next/image";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   callRpc,
   getAgentSessionHistory,
   getGatewayBaseUrl,
   listAgents,
   type AgentWsEvent,
+  type ListedAgent,
 } from "@/lib/gateway";
 import { useGatewayWs } from "@/lib/gateway-ws-context";
 import { useI18n } from "@/lib/i18n";
@@ -109,10 +110,45 @@ export function ChatPanel({
   /** 与网关 AgentRunParams.reasoning_level 对齐：stream 时才会 WS 推送 think/推理块 */
   const [streamReasoning, setStreamReasoning] = useState(true);
   const [assistantAvatarSrc, setAssistantAvatarSrc] = useState("/icons/robot.png");
+  const [listedAgents, setListedAgents] = useState<ListedAgent[]>([]);
+  const [agentsListLoading, setAgentsListLoading] = useState(false);
   const messagesWrapRef = useRef<HTMLElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   /** After opening chat / switching agent, pin to bottom once history is loaded. */
   const forceChatScrollBottomRef = useRef(false);
+
+  const reloadSessionForAgent = useCallback(
+    (nextAgentId: string) => {
+      const id = nextAgentId.trim() || "main";
+      setMessages([]);
+      setBusy(false);
+      setSessionReady(false);
+      setSessionId("");
+      const key = sessionKey.trim() || "desktop-app";
+      void getAgentSessionHistory(id, key).then((r) => {
+        if (!r.ok) {
+          setSessionId(newId());
+          setSessionReady(true);
+          return;
+        }
+        const sid = r.sessionId?.trim();
+        if (sid) {
+          setSessionId(sid);
+          setMessages(
+            r.messages.map((m) => ({
+              id: newId(),
+              role: m.role,
+              text: m.text,
+            }))
+          );
+        } else {
+          setSessionId(newId());
+        }
+        setSessionReady(true);
+      });
+    },
+    [sessionKey]
+  );
 
   useEffect(() => {
     forceChatScrollBottomRef.current = true;
@@ -133,6 +169,37 @@ export function ChatPanel({
       setSessionId(newId());
     }
   }, [sessionResetKey, initialAgentId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setListedAgents([]);
+    setAgentsListLoading(true);
+    void listAgents().then((r) => {
+      if (cancelled) return;
+      setAgentsListLoading(false);
+      if (r.ok) {
+        const sorted = [...r.agents].sort((a, b) => a.agentId.localeCompare(b.agentId));
+        setListedAgents(sorted);
+      } else {
+        setListedAgents([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionResetKey]);
+
+  useEffect(() => {
+    if (!listedAgents.length) return;
+    const ids = new Set(listedAgents.map((x) => x.agentId));
+    const pref = initialAgentId?.trim();
+    const nextId =
+      pref && ids.has(pref) ? pref : ids.has(agentId) ? agentId : listedAgents[0].agentId;
+    if (nextId !== agentId) {
+      setAgentId(nextId);
+      reloadSessionForAgent(nextId);
+    }
+  }, [listedAgents, sessionResetKey, initialAgentId, agentId, reloadSessionForAgent]);
 
   useEffect(() => {
     const aid = initialAgentId?.trim();
@@ -168,6 +235,26 @@ export function ChatPanel({
       cancelled = true;
     };
   }, [sessionResetKey, initialAgentId, sessionKey]);
+
+  const handleAgentSelectChange = useCallback(
+    (nextId: string) => {
+      const id = nextId.trim();
+      if (!id || id === agentId) return;
+      setAgentId(id);
+      reloadSessionForAgent(id);
+    },
+    [agentId, reloadSessionForAgent]
+  );
+
+  const agentSelectOptions: ListedAgent[] = useMemo(() => {
+    const cur = (agentId || "").trim() || "main";
+    if (listedAgents.length === 0) return [{ agentId: cur, configured: true }];
+    const ids = new Set(listedAgents.map((a) => a.agentId));
+    if (ids.has(cur)) return listedAgents;
+    return [...listedAgents, { agentId: cur, configured: true }].sort((a, b) =>
+      a.agentId.localeCompare(b.agentId)
+    );
+  }, [listedAgents, agentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -686,13 +773,28 @@ export function ChatPanel({
           </code>
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[var(--muted)]">{t("agentId")}</span>
-          <input
-            className="px-2 py-1 rounded bg-[var(--panel)] border border-[var(--border)] text-[var(--text)]"
-            value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
-            disabled={busy}
-          />
+          <span
+            className="text-[var(--muted)]"
+            title={agentsListLoading ? t("agentsLoading") : undefined}
+          >
+            {t("agentId")}
+          </span>
+          <select
+            className="px-2 py-1 rounded bg-[var(--panel)] border border-[var(--border)] text-[var(--text)] min-w-0 max-w-full"
+            value={
+              agentSelectOptions.some((a) => a.agentId === agentId)
+                ? agentId
+                : (agentSelectOptions[0]?.agentId ?? "main")
+            }
+            onChange={(e) => handleAgentSelectChange(e.target.value)}
+            disabled={busy || agentsListLoading}
+          >
+            {agentSelectOptions.map((a) => (
+              <option key={a.agentId} value={a.agentId}>
+                {a.agentId}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-0.5">
           <span className="text-[var(--muted)]">{t("sessionKey")}</span>

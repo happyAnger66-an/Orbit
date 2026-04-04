@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import time
+import unicodedata
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -92,6 +93,30 @@ def _is_safe_rel_path(path: str) -> bool:
     return True
 
 
+def _normalize_workspace_bootstrap_rel(rel_path: str) -> str:
+    """Strip junk (BOM, quotes) and normalize Unicode for bootstrap filename matching."""
+    rel = (rel_path or "").strip().lstrip("/").replace("\\", "/")
+    if rel.startswith("\ufeff"):
+        rel = rel[1:].strip().lstrip("/").replace("\\", "/")
+    if len(rel) >= 2 and rel[0] == rel[-1] and rel[0] in "'\"":
+        rel = rel[1:-1].strip().lstrip("/").replace("\\", "/")
+    return unicodedata.normalize("NFC", rel)
+
+
+def _workspace_bootstrap_candidates(rel_normalized: str) -> tuple[str, ...]:
+    """Return probe order for an allowed bootstrap basename; empty if not allowed."""
+    cf = rel_normalized.casefold()
+    if cf == "memory.md":
+        return ("MEMORY.md", "memory.md")
+    if cf == "soul.md":
+        return ("SOUL.md", "soul.md")
+    if cf == "agents.md":
+        if rel_normalized == "agents.md":
+            return ("agents.md", "AGENTS.md")
+        return ("AGENTS.md", "agents.md")
+    return ()
+
+
 def _resolve_agent_workspace_file_abs(
     *,
     agent_manager: AgentManager,
@@ -105,41 +130,26 @@ def _resolve_agent_workspace_file_abs(
 
     - Only allows a small set of root bootstrap files for the web editor UI.
     - Optionally prefers an existing case-variant (e.g. request "memory.md" but "MEMORY.md" exists).
+    - Matching is case-insensitive (Unicode NFC); see _normalize_workspace_bootstrap_rel.
     - Guards against path traversal by checking resolved path is under workspace root.
     """
-    rel = (rel_path or "").strip().lstrip("/").replace("\\", "/")
-    allowed = {
-        "memory.md",
-        "MEMORY.md",
-        "SOUL.md",
-        "soul.md",
-        "AGENTS.md",
-        "agents.md",
-    }
-    if rel not in allowed:
-        raise ValueError(f"unsupported file: {rel!r}")
-
-    candidates = [rel]
-    if prefer_existing_case_variant:
-        if rel in {"memory.md", "MEMORY.md"}:
-            candidates = ["MEMORY.md", "memory.md"]
-        elif rel in {"SOUL.md", "soul.md"}:
-            candidates = ["SOUL.md", "soul.md"]
-        elif rel in {"AGENTS.md", "agents.md"}:
-            candidates = ["AGENTS.md", "agents.md"] if rel == "AGENTS.md" else ["agents.md", "AGENTS.md"]
+    rel = _normalize_workspace_bootstrap_rel(rel_path)
+    candidates = _workspace_bootstrap_candidates(rel)
+    if not candidates:
+        raise ValueError(f"unsupported file: {rel_path!r}")
 
     workspace_dir = agent_manager.get_or_create(agent_id).workspace_dir
     root = Path(workspace_dir).resolve()
 
-    # Pick the first existing candidate; otherwise use the first candidate as default target.
     chosen = candidates[0]
-    for c in candidates:
-        p = (root / c).resolve()
-        if root != p and root not in p.parents:
-            continue
-        if p.is_file():
-            chosen = c
-            break
+    if prefer_existing_case_variant:
+        for c in candidates:
+            p = (root / c).resolve()
+            if root != p and root not in p.parents:
+                continue
+            if p.is_file():
+                chosen = c
+                break
 
     target = (root / chosen).resolve()
     if root != target and root not in target.parents:
@@ -151,15 +161,14 @@ def _resolve_orchestration_workspace_file_abs(orch_id: str, rel_path: str) -> tu
     """Allowed root files under ``<state>/orchestrations/<orchId>/`` (team ``AGENTS.md``)."""
     from ..config.paths import orchestration_state_dir
 
-    rel = (rel_path or "").strip().lstrip("/").replace("\\", "/")
-    allowed = {"AGENTS.md", "agents.md"}
-    if rel not in allowed:
-        raise ValueError(f"unsupported file: {rel!r}")
+    rel = _normalize_workspace_bootstrap_rel(rel_path)
+    if rel.casefold() != "agents.md":
+        raise ValueError(f"unsupported file: {rel_path!r}")
     oid = (orch_id or "").strip()
     if not oid:
         raise ValueError("orchId is required")
     root = Path(orchestration_state_dir(oid)).resolve()
-    candidates = ["AGENTS.md", "agents.md"] if rel == "AGENTS.md" else ["agents.md", "AGENTS.md"]
+    candidates = ["agents.md", "AGENTS.md"] if rel == "agents.md" else ["AGENTS.md", "agents.md"]
     chosen = candidates[0]
     for c in candidates:
         p = (root / c).resolve()
@@ -1163,7 +1172,7 @@ def create_app(
 
         if method == "agents.workspace_file.read":
             agent_id = str(params.get("agentId") or "").strip()
-            rel_path = str(params.get("path") or "").strip()
+            rel_path = str(params.get("path") or params.get("name") or "").strip()
             if not agent_id:
                 return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "agentId is required"}}
             if not rel_path:
@@ -1187,7 +1196,7 @@ def create_app(
 
         if method == "agents.workspace_file.write":
             agent_id = str(params.get("agentId") or "").strip()
-            rel_path = str(params.get("path") or "").strip()
+            rel_path = str(params.get("path") or params.get("name") or "").strip()
             text = params.get("text")
             if not agent_id:
                 return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "agentId is required"}}
@@ -1597,6 +1606,27 @@ def create_app(
             except Exception as e:
                 return {"id": req_id, "ok": False, "error": {"code": "unavailable", "message": str(e)}}
             return {"id": req_id, "ok": True, "payload": {"deleted": bool(deleted)}}
+
+        if method == "orchestrate.reset":
+            orch_id = str(params.get("orchId") or "").strip()
+            if not orch_id:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": "orchId is required"}}
+            try:
+                st = orchestrator.reset_session(orch_id)
+            except ValueError as e:
+                return {"id": req_id, "ok": False, "error": {"code": "invalid_request", "message": str(e)}}
+            except Exception as e:
+                return {"id": req_id, "ok": False, "error": {"code": "unavailable", "message": str(e)}}
+            return {
+                "id": req_id,
+                "ok": True,
+                "payload": {
+                    "orchId": st.orchId,
+                    "status": st.status,
+                    "sessionKey": st.sessionKey,
+                    "currentRound": st.currentRound,
+                },
+            }
 
         if method == "orchestrate.get":
             orch_id = str(params.get("orchId") or "").strip()

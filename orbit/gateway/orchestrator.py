@@ -23,6 +23,7 @@ from .dag_spec import MAX_UPSTREAM_SNIPPET, normalize_dag_dict
 from .orch_trace import (
     build_stream_trace_handler,
     flush_run_trace,
+    orch_trace_file_path,
     record_user_message_trace,
 )
 
@@ -719,6 +720,64 @@ class Orchestrator:
             raise ValueError("refusing to delete path outside orchestrations root")
         shutil.rmtree(root)
         return True
+
+    def reset_session(self, orch_id: str) -> OrchState:
+        """Clear transcript and per-agent session ids; keep orch metadata (name, strategy, DAG spec, …).
+
+        Writes a fresh ``orch.json`` (``messages`` empty, ``status=idle``, new ``agentSessions`` UUIDs).
+        Removes ``trace.jsonl`` if present. Refuses while ``status == running``.
+        """
+        oid = (orch_id or "").strip()
+        if not oid:
+            raise ValueError("orchId is required")
+        st = self._load(oid)
+        if not st:
+            raise ValueError("orchestration not found")
+        if (st.status or "").strip() == "running":
+            raise ValueError("orchestration is running; wait for it to finish before reset")
+
+        parts = [normalize_agent_id(p) for p in (st.participants or []) if str(p).strip()]
+        parts = [p for i, p in enumerate(parts) if p and p not in parts[:i]]
+        if not parts:
+            parts = ["main"]
+        st.participants = parts
+        st.agentSessions = {p: str(uuid.uuid4()) for p in parts}
+        st.messages = []
+        st.currentRound = 0
+        st.error = None
+        st.status = "idle"
+        st.pendingDirectAgent = None
+        st.pendingSingleTurn = False
+        st.supervisorIteration = 0
+        st.supervisorLastDecision = None
+        st.orchTraceSeq = 0
+
+        if (st.strategy or "").strip().lower() == "dag" and isinstance(st.dagSpec, dict):
+            nodes_raw = st.dagSpec.get("nodes")
+            if isinstance(nodes_raw, list):
+                nodes = [
+                    n
+                    for n in nodes_raw
+                    if isinstance(n, dict) and str(n.get("id") or "").strip()
+                ]
+                if nodes:
+                    st.dagProgress = {
+                        str(n["id"]): {"status": "pending", "outputPreview": ""} for n in nodes
+                    }
+                    st.dagNodeSessions = {str(n["id"]): str(uuid.uuid4()) for n in nodes}
+                else:
+                    st.dagProgress = {}
+                    st.dagNodeSessions = {}
+
+        tp = orch_trace_file_path(oid)
+        try:
+            if os.path.isfile(tp):
+                os.remove(tp)
+        except OSError:
+            pass
+
+        self._save(st)
+        return st
 
     def is_running(self, orch_id: str) -> bool:
         st = self._load(orch_id)

@@ -41,6 +41,8 @@ orbit gateway status --url http://127.0.0.1:18790
 
 ### Desktop（Orbit）
 
+![预览](./images/desktop.png)
+
 独立桌面或本地 Web 界面（`npm run dev` / Tauri），与 Gateway 使用相同的 **HTTP RPC** 与 **WebSocket**；需先启动 Gateway，再按 **[Desktop 使用说明](frontend/desktop/README.md)** 安装依赖、配置 `NEXT_PUBLIC_GATEWAY_URL` 并运行。
 
 ### Dashboard 控制台

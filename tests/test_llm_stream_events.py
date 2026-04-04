@@ -105,6 +105,45 @@ async def test_runner_emits_llm_stream_on_tool_loop_round(tmp_path: Path, monkey
     assert data.get("phase") == "tool_loop"
     assert data.get("round") == 0
 
+    prompt_events = [e for e in runner.event_stream.get_events() if e.stream == "llm" and e.type == "prompt"]
+    assert len(prompt_events) >= 2
+    assert (prompt_events[0].data or {}).get("phase") == "tool_loop"
+    assert (prompt_events[0].data or {}).get("round") == 0
+    assert "hi" in str((prompt_events[0].data or {}).get("user") or "")
+
+
+@pytest.mark.asyncio
+async def test_runner_emits_llm_prompt_before_single_turn(tmp_path: Path, monkeypatch) -> None:
+    import orbit.agents.runner.runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "generate_reply",
+        lambda params, messages=None: ("ok", "echo", "m", LLMUsage()),
+    )
+
+    sm = SessionManager(str(tmp_path / "sessions.json"))
+    runner = AgentRunner(sm)
+    monkeypatch.setattr(runner.tool_registry, "list_tools", lambda: [])
+
+    await runner.run(
+        AgentRunParams(
+            message="hello user",
+            session_id="s-prompt-1",
+            session_key="k-prompt-1",
+            agent_id="main",
+            provider="echo",
+            extra_system_prompt="boot line",
+        )
+    )
+    prompts = [e for e in runner.event_stream.get_events() if e.stream == "llm" and e.type == "prompt"]
+    assert len(prompts) == 1
+    d = prompts[0].data or {}
+    assert d.get("phase") == "single_turn"
+    assert "boot line" in str(d.get("system") or "")
+    assert "hello user" in str(d.get("user") or "")
+    assert "hello user" in str(d.get("messages_json") or "")
+
 
 @pytest.mark.asyncio
 async def test_runner_single_turn_strips_thinking_from_payload(tmp_path: Path, monkeypatch) -> None:

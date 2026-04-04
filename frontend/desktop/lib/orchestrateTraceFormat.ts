@@ -23,6 +23,12 @@ export function formatOrchTraceSummary(ev: OrchTraceEvent): string {
     return `${typ} · ${agent} · ${name}`;
   }
   if (typ === "llm_round") return `llm_round · ${agent} · ${round}`;
+  if (typ === "llm_prompt") {
+    const p = pl && typeof pl === "object" ? (pl as Record<string, unknown>) : {};
+    const ph = String(p.phase ?? "?");
+    const rd = p.round != null ? ` · r${Number(p.round)}` : "";
+    return `llm_prompt · ${agent} · ${round} · ${ph}${rd}`;
+  }
   if (typ.startsWith("lifecycle")) return `${typ} · ${agent}`;
   return `${typ} · ${agent} · ${round}`;
 }
@@ -49,6 +55,7 @@ export function traceEventTypeClass(type: string): string {
   if (t === "agent_input" || t === "agent_output") return "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
   if (t.startsWith("tool_")) return "bg-amber-500/20 text-amber-300 border-amber-500/40";
   if (t === "llm_round") return "bg-violet-500/20 text-violet-300 border-violet-500/40";
+  if (t === "llm_prompt") return "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/40";
   if (t.startsWith("lifecycle")) return "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
   return "bg-[var(--panel)] text-[var(--muted)] border-[var(--border)]";
 }

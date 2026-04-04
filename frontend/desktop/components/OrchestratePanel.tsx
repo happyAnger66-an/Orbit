@@ -17,6 +17,7 @@ import {
   orchestrateCreate,
   orchestrateDelete,
   orchestrateGet,
+  orchestrateReset,
   orchestrateList,
   orchestrateSend,
   orchestrateUpdate,
@@ -1071,6 +1072,34 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
     return fromListName || selectedOrchId.slice(0, 8);
   }, [orches, selected?.name, selectedOrchId]);
 
+  const doResetSession = useCallback(async () => {
+    const orchId = selectedOrchId.trim();
+    if (!orchId) return;
+    const name = selectedTitle.trim() || orchId.slice(0, 8);
+    const ok = window.confirm(t("orchestrateResetConfirm", { name }));
+    if (!ok) return;
+    setError(null);
+    const r = await orchestrateReset(orchId);
+    if (!r.ok) {
+      setError(r.error || t("orchestrateError"));
+      return;
+    }
+    const g = await orchestrateGet(orchId);
+    if (g.ok) {
+      setSelected({
+        orchId: g.orchId,
+        name: g.name,
+        status: g.status,
+        strategy: g.strategy,
+        participants: g.participants,
+        messages: g.messages || [],
+        dagProgress: g.dagProgress ?? undefined,
+      });
+      setBusy(busyFromOrchestrateStatus(g.status));
+    }
+    void loadOrches();
+  }, [loadOrches, selectedOrchId, selectedTitle, t]);
+
   const selectedParticipants = useMemo(() => {
     const parts = selected?.participants ?? [];
     const norm = parts.map((p) => (p || "").trim()).filter(Boolean);
@@ -1273,6 +1302,15 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                   </div>
                 ) : null}
               </div>
+              <button
+                type="button"
+                disabled={busy || busyFromOrchestrateStatus(selected?.status || "")}
+                className="text-xs px-2 py-1 rounded-md border border-[var(--border)] bg-[var(--bg)] hover:opacity-90 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={t("orchestrateReset")}
+                onClick={() => void doResetSession()}
+              >
+                {t("orchestrateReset")}
+              </button>
             </div>
           ) : null}
           {selectedOrchId && live ? (

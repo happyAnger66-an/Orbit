@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.request
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 if TYPE_CHECKING:
     from ..agents.types import AgentRunParams
@@ -22,6 +23,47 @@ from orbit.log import get_logger
 from orbit.log.agent_llm import format_agent_tag, preview_one_line
 
 logger = get_logger(__name__)
+
+_T = TypeVar("_T")
+
+# 首次请求失败后最多再重试 3 次（共 4 次 HTTP 调用），仍失败则走原有 fallback。
+_LLM_HTTP_MAX_ATTEMPTS = 4
+_LLM_RETRY_BACKOFF_BASE_S = 0.5
+
+
+def _call_openai_with_retries(
+    fn: Callable[[], _T],
+    *,
+    agent_id: Optional[str] = None,
+    operation: str = "llm",
+) -> _T:
+    """Run ``fn``; on failure retry with bounded exponential backoff, then re-raise."""
+    tag = format_agent_tag(agent_id)
+    for attempt in range(1, _LLM_HTTP_MAX_ATTEMPTS + 1):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt >= _LLM_HTTP_MAX_ATTEMPTS:
+                logger.warning(
+                    "%s %s failed after %d attempts: %s",
+                    tag,
+                    operation,
+                    _LLM_HTTP_MAX_ATTEMPTS,
+                    e,
+                )
+                raise
+            logger.warning(
+                "%s %s attempt %d/%d failed: %s; retrying",
+                tag,
+                operation,
+                attempt,
+                _LLM_HTTP_MAX_ATTEMPTS,
+                e,
+            )
+            delay = min(4.0, _LLM_RETRY_BACKOFF_BASE_S * (2 ** (attempt - 1)))
+            time.sleep(delay)
+    raise RuntimeError("unreachable")
+
 
 # One tool call from API: id, name, arguments (JSON string or dict)
 ToolCallPayload = Dict[str, Any]
@@ -648,16 +690,27 @@ def generate_reply_with_tools(
                 max_tokens=max_tokens,
                 agent_id=params.agent_id,
             )
-        reply, usage = _call_openai_chat(
-            params.message,
-            messages=resolved_messages,
-            model=model or spec.default_model or "gpt-4o-mini",
-            api_key=api_key or "none",
-            base_url=base_url,
-            extra_body={**_thinking_extra_body(provider, thinking_level), **_limits_extra_body(max_tokens)},
-            agent_id=params.agent_id,
-        )
-        return reply, [], provider, model or spec.default_model, usage
+        try:
+            reply, usage = _call_openai_with_retries(
+                lambda: _call_openai_chat(
+                    params.message,
+                    messages=resolved_messages,
+                    model=model or spec.default_model or "gpt-4o-mini",
+                    api_key=api_key or "none",
+                    base_url=base_url,
+                    extra_body={
+                        **_thinking_extra_body(provider, thinking_level),
+                        **_limits_extra_body(max_tokens),
+                    },
+                    agent_id=params.agent_id,
+                ),
+                agent_id=params.agent_id,
+                operation="chat_completions",
+            )
+            return reply, [], provider, model or spec.default_model, usage
+        except Exception as e:
+            fallback = f"Agent ({provider}-error) reply: {params.message}\n\n[error: {e}]"
+            return fallback, [], provider, model, LLMUsage()
 
     try:
         resolved_messages = messages
@@ -670,14 +723,21 @@ def generate_reply_with_tools(
                 max_tokens=max_tokens,
                 agent_id=params.agent_id,
             )
-        content, tool_calls, usage = _call_openai_chat_with_tools(
-            resolved_messages,
-            tools_openai,
-            model=model or spec.default_model or "gpt-4o-mini",
-            api_key=api_key or "none",
-            base_url=base_url,
-            extra_body={**_thinking_extra_body(provider, thinking_level), **_limits_extra_body(max_tokens)},
+        content, tool_calls, usage = _call_openai_with_retries(
+            lambda: _call_openai_chat_with_tools(
+                resolved_messages,
+                tools_openai,
+                model=model or spec.default_model or "gpt-4o-mini",
+                api_key=api_key or "none",
+                base_url=base_url,
+                extra_body={
+                    **_thinking_extra_body(provider, thinking_level),
+                    **_limits_extra_body(max_tokens),
+                },
+                agent_id=params.agent_id,
+            ),
             agent_id=params.agent_id,
+            operation="chat_completions+tools",
         )
         return content, tool_calls, provider, model or spec.default_model, usage
     except Exception as e:
@@ -739,14 +799,21 @@ def generate_reply(params: AgentRunParams, *, messages: Optional[List[Dict[str, 
         )
 
     try:
-        text, usage = _call_openai_chat(
-            params.message,
-            messages=resolved_messages,
-            model=model or spec.default_model or "gpt-4o-mini",
-            api_key=api_key or "none",
-            base_url=base_url,
-            extra_body={**_thinking_extra_body(provider, thinking_level), **_limits_extra_body(max_tokens)},
+        text, usage = _call_openai_with_retries(
+            lambda: _call_openai_chat(
+                params.message,
+                messages=resolved_messages,
+                model=model or spec.default_model or "gpt-4o-mini",
+                api_key=api_key or "none",
+                base_url=base_url,
+                extra_body={
+                    **_thinking_extra_body(provider, thinking_level),
+                    **_limits_extra_body(max_tokens),
+                },
+                agent_id=params.agent_id,
+            ),
             agent_id=params.agent_id,
+            operation="chat_completions",
         )
         return text or "", provider, model or spec.default_model, usage
     except Exception as e:
@@ -813,14 +880,18 @@ def test_llm_connection(llm: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     safe_base = base_url or (spec.default_base_url if spec else "") or "https://api.openai.com"
 
     try:
-        text, _usage = _call_openai_chat(
-            "Reply with exactly: OK",
-            model=safe_model,
-            api_key=api_key or "none",
-            base_url=safe_base,
-            extra_body=_thinking_extra_body(provider, thinking_level),
-            timeout_s=25.0,
+        text, _usage = _call_openai_with_retries(
+            lambda: _call_openai_chat(
+                "Reply with exactly: OK",
+                model=safe_model,
+                api_key=api_key or "none",
+                base_url=safe_base,
+                extra_body=_thinking_extra_body(provider, thinking_level),
+                timeout_s=25.0,
+                agent_id="llm.test",
+            ),
             agent_id="llm.test",
+            operation="llm.test",
         )
         preview = (text or "").strip()[:400]
         return {"success": True, "message": "Request succeeded.", "preview": preview or None}

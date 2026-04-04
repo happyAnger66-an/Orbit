@@ -6,9 +6,11 @@ import json
 
 import pytest
 
+from orbit.agents.types import StreamEvent
 from orbit.gateway.orch_trace import (
     TRACE_FILENAME,
     append_trace_events,
+    build_stream_trace_handler,
     orch_trace_file_path,
     read_trace_events,
     record_user_message_trace,
@@ -66,3 +68,38 @@ def test_record_user_message_trace_writes_user_message_row(state_dir: str) -> No
 
 def test_read_trace_events_empty_when_no_file(state_dir: str) -> None:
     assert read_trace_events("no-such-orch-yet", after_seq=0, limit=10) == []
+
+
+@pytest.mark.asyncio
+async def test_build_stream_trace_handler_llm_prompt_event() -> None:
+    buf: list = []
+    h = build_stream_trace_handler(
+        run_id="r1",
+        agent_id="main",
+        orch_id="o1",
+        orch_round=2,
+        buffer=buf,
+    )
+    await h(
+        StreamEvent(
+            stream="llm",
+            type="prompt",
+            timestamp=99_000,
+            data={
+                "run_id": "r1",
+                "phase": "tool_loop",
+                "round": 1,
+                "system": "sys",
+                "user": "usr",
+                "messages_json": '[{"role":"user","content":"hi"}]',
+            },
+        )
+    )
+    assert len(buf) == 1
+    assert buf[0]["type"] == "llm_prompt"
+    assert buf[0]["orchRound"] == 2
+    assert buf[0]["payload"]["phase"] == "tool_loop"
+    assert buf[0]["payload"]["round"] == 1
+    assert buf[0]["payload"]["system"] == "sys"
+    assert buf[0]["payload"]["user"] == "usr"
+    assert "hi" in buf[0]["payload"]["messages_json"]

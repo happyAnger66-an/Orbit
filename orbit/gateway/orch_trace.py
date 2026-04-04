@@ -12,6 +12,10 @@ from ..config.paths import orchestration_state_dir
 TRACE_FILENAME = "trace.jsonl"
 # Per-string field cap (tool params/results can be large)
 TRACE_MAX_CHARS = 12_000
+# LLM request prompt fields (system/user aggregates + full messages JSON)
+TRACE_PROMPT_SYSTEM_MAX = 24_000
+TRACE_PROMPT_USER_MAX = 24_000
+TRACE_PROMPT_MESSAGES_MAX = 80_000
 # Rotate file when above this size (drop oldest lines until under cap)
 TRACE_MAX_FILE_BYTES = 4 * 1024 * 1024
 
@@ -239,6 +243,30 @@ def build_stream_trace_handler(
             elif typ == "processing":
                 # Skip noisy periodic processing ticks for trace file
                 pass
+        elif evt.stream == "llm" and evt.type == "prompt":
+            buffer.append(
+                {
+                    **base,
+                    "ts": ts,
+                    "type": "llm_prompt",
+                    "payload": {
+                        "phase": evt.data.get("phase"),
+                        "round": evt.data.get("round"),
+                        "system": _truncate(
+                            str(evt.data.get("system") or ""),
+                            max_len=TRACE_PROMPT_SYSTEM_MAX,
+                        ),
+                        "user": _truncate(
+                            str(evt.data.get("user") or ""),
+                            max_len=TRACE_PROMPT_USER_MAX,
+                        ),
+                        "messages_json": _truncate(
+                            str(evt.data.get("messages_json") or ""),
+                            max_len=TRACE_PROMPT_MESSAGES_MAX,
+                        ),
+                    },
+                }
+            )
         elif evt.stream == "llm" and evt.type == "message":
             thinking = evt.data.get("thinking")
             content = evt.data.get("content")

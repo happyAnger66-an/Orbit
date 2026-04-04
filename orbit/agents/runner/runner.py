@@ -73,6 +73,50 @@ TOOL_PROCESSING_START_SEC = 30.0
 TOOL_PROCESSING_INTERVAL_SEC = 60.0
 
 
+def _message_content_to_str(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        chunks: List[str] = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                chunks.append(str(part.get("text") or ""))
+            elif isinstance(part, dict):
+                chunks.append(json.dumps(part, ensure_ascii=False)[:2000])
+            else:
+                chunks.append(str(part)[:2000])
+        return "\n".join(chunks)
+    return str(content)
+
+
+def _llm_trace_prompt_fields(messages: List[Dict[str, Any]]) -> Dict[str, str]:
+    """System/user text aggregates plus full messages JSON (for trace / orchestration JSONL)."""
+    sys_parts: List[str] = []
+    user_parts: List[str] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = str(m.get("role") or "")
+        c = _message_content_to_str(m.get("content")).strip()
+        if not c:
+            continue
+        if role == "system":
+            sys_parts.append(c)
+        elif role == "user":
+            user_parts.append(c)
+    try:
+        mj = json.dumps(messages, ensure_ascii=False, default=str)
+    except Exception:
+        mj = repr(messages)
+    return {
+        "system": "\n\n".join(sys_parts),
+        "user": "\n\n".join(user_parts),
+        "messages_json": mj,
+    }
+
+
 def _merge_llm_usage(a: LLMUsage, b: LLMUsage) -> LLMUsage:
     """Sum token counts across tool-loop rounds and the finalize text-only turn."""
 
@@ -291,6 +335,33 @@ class AgentRunner:
                     "content": text_only if text_only.strip() else None,
                     "tool_calls": tc_summary,
                     "usage": usage_payload or None,
+                },
+            )
+        )
+
+    async def _emit_llm_prompt_trace(
+        self,
+        run_id: str,
+        params: AgentRunParams,
+        messages: List[Dict[str, Any]],
+        *,
+        phase: str,
+        round_index: Optional[int],
+    ) -> None:
+        """Emit LLM request payload for tracing (orchestration JSONL / stream subscribers)."""
+        fields = _llm_trace_prompt_fields(messages)
+        await self.event_stream.emit(
+            StreamEvent(
+                stream="llm",
+                type="prompt",
+                data={
+                    "run_id": run_id,
+                    "session_id": params.session_id,
+                    "session_key": params.session_key,
+                    "agent_id": params.agent_id,
+                    "phase": phase,
+                    "round": round_index,
+                    **fields,
                 },
             )
         )
@@ -609,6 +680,15 @@ class AgentRunner:
                 composed_with_skills = composed_message
 
             llm_params = replace(params_for_llm, message=composed_with_skills)
+            trace_msgs: List[Dict[str, Any]] = []
+            if llm_params.extra_system_prompt and str(llm_params.extra_system_prompt).strip():
+                trace_msgs.append(
+                    {"role": "system", "content": str(llm_params.extra_system_prompt).strip()}
+                )
+            trace_msgs.append({"role": "user", "content": llm_params.message or ""})
+            await self._emit_llm_prompt_trace(
+                run_id, params, trace_msgs, phase="tool_plan", round_index=None
+            )
             await asyncio.sleep(0)
             reply_text, provider, model, usage = await asyncio.to_thread(generate_reply, llm_params)
             await self._emit_llm_response_message(
@@ -742,6 +822,9 @@ class AgentRunner:
                 user_msg = {"role": "user", "content": params_for_llm.message or ""}
                 messages.append(user_msg)
 
+                await self._emit_llm_prompt_trace(
+                    run_id, params, messages, phase="single_turn", round_index=None
+                )
                 reply_text, provider, model, usage = await asyncio.to_thread(
                     generate_reply, params_for_llm, messages=messages
                 )
@@ -886,6 +969,9 @@ class AgentRunner:
         tool_loop_stop_reason: Optional[str] = None
         for round_idx in range(MAX_TOOL_ROUNDS):
             await asyncio.sleep(0)
+            await self._emit_llm_prompt_trace(
+                run_id, params, messages, phase="tool_loop", round_index=round_idx
+            )
             content, tool_calls, provider, model, usage = await asyncio.to_thread(
                 generate_reply_with_tools, params, messages, tool_definitions
             )
@@ -998,6 +1084,9 @@ class AgentRunner:
                 "Use the same language as the user when possible. Do not propose further tool calls."
             )
             messages.append({"role": "system", "content": cap_note})
+            await self._emit_llm_prompt_trace(
+                run_id, params, messages, phase="tool_loop_finalize", round_index=None
+            )
             final_text, provider2, model2, usage2 = await asyncio.to_thread(
                 generate_reply, params, messages=messages
             )

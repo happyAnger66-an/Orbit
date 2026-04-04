@@ -1084,14 +1084,12 @@ export function AgentsPanel({ onOpenChatWithAgent }: AgentsPanelProps) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
           role="presentation"
-          onClick={closeFileEditor}
         >
           <div
             className="w-full max-w-3xl max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="orbit-agent-file-editor-title"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-[var(--border)] px-4 py-3 flex items-center justify-between">
               <h3 id="orbit-agent-file-editor-title" className="text-sm font-semibold">
