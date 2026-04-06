@@ -1,5 +1,10 @@
 # Orbit 测试文档
 
+## 规范
+
+- **所有自动化测试必须放在本目录 `tests/` 下**（命名建议 `test_*.py`），**不要**在 `orbit/`、`frontend/` 等源码树中与实现文件并列放置 `*_test.py`。
+- 从 `tests/` 内用 **`from orbit....` 绝对导入** 引用被测模块；路径由 `conftest.py` 在会话开始时把仓库根加入 `sys.path` 保证指向当前 checkout。
+
 ## 测试文件列表
 
 ### 端到端测试（E2E）
@@ -29,6 +34,9 @@
 
 ### 单元测试
 
+- **`test_subagents_parse.py`**：`/subagents` 参数解析（`shlex`、spawn 拆分）
+- **`test_subagents_logic.py`**：桌面子智能体纯逻辑（记录过滤、runId 解析、transcript 尾部）
+- **`test_subagents_cmd_integration.py`**：`subagents_cmd` 与 `GatewayState` 集成（需安装 FastAPI，否则 skip）
 - **`test_crypto_secure_io.py`**：加密框架基础测试
 - **`test_gateway_agent_flow.py`**：Gateway Agent 交互测试（脚本式）
 - **`test_gateway_tool_ls.py`**：Gateway 工具调用测试（脚本式）

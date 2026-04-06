@@ -53,6 +53,8 @@ class GatewayState:
         # Best-effort in-memory latest session id per (agent_id, session_key).
         # This avoids races and allows quick reuse without hitting disk.
         self.latest_session_by_key: Dict[Tuple[str, str], str] = {}
+        # Desktop `/subagents spawn` children (see gateway/subagents_cmd.py).
+        self.desktop_subagents: list = []
         # Token required for node connect when set; when None, node connect is allowed without auth (dev).
         self.node_token: Optional[str] = node_token
 

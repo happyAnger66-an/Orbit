@@ -61,7 +61,7 @@
 
 - [ ] 工具调用循环检测
 - [ ] 会话压缩（compaction）
-- [ ] 子智能体（subagent）支持
+- [x] **子智能体（subagent）— 桌面 `/subagents`**（Orbit 本地实现；见 [desktop-subagents](./desktop-subagents.md)）
 - [ ] 超时和重试机制
 - [ ] 错误恢复和重试
 - [ ] 上下文窗口管理
@@ -76,8 +76,8 @@
 
 ### Gateway 集成
 
-- [ ] Gateway RPC 接口
-- [ ] WebSocket 事件流
+- [x] Gateway RPC 接口（`POST /rpc`，含 `agent` / `agent.wait` 等）
+- [x] WebSocket 事件流（`/ws`）
 - [ ] 远程执行支持
 
 ## 📝 实现计划
@@ -99,7 +99,7 @@
 
 ### Phase 3: 高级功能
 
-- [ ] 子智能体
+- [x] 子智能体（桌面 `/subagents`，见 [desktop-subagents](./desktop-subagents.md)）
 - [ ] 会话压缩
 - [ ] 工具循环检测
 - [ ] 错误恢复

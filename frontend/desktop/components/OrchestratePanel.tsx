@@ -38,6 +38,7 @@ import {
 import { specHasCycle } from "@/lib/orchestrateDagFlow";
 import { parseOrchestrateTargetAgent } from "@/lib/orchestrateMention";
 import { useI18n } from "@/lib/i18n";
+import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { ChatThinkToolCheckbox } from "@/components/ChatThinkToolCheckbox";
 import { OrchestrateMentionInput } from "@/components/OrchestrateMentionInput";
 import { busyFromOrchestrateStatus } from "@/lib/orchestratePollBusy";
@@ -1640,8 +1641,8 @@ export function OrchestratePanel({ autoOpenKey = 0 }: { autoOpenKey?: number }) 
                           {m.usage.total != null ? ` · Σ ${formatTokenCount(m.usage.total)}` : ""}
                         </div>
                       ) : null}
-                      <div className="text-xs whitespace-pre-wrap break-words leading-relaxed">
-                        {m.text}
+                      <div className="break-words leading-relaxed">
+                        <ChatMarkdown text={m.text} role={m.role} compact />
                       </div>
                     </div>
                   </div>

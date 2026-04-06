@@ -1,0 +1,12 @@
+---
+description: 测试文件仅放在 tests/ 目录，不与源码混排
+globs: orbit/**,frontend/**,**/*
+---
+
+# 测试布局（mw4agent）
+
+- 所有 **pytest / 单元与集成测试** 必须写在仓库根目录的 **`tests/`** 下，文件名建议 **`test_*.py`**。
+- **禁止**在 `orbit/`、`frontend/desktop/` 等源码目录中与实现文件并列新增 `*_test.py`、`*_integration_test.py` 等。
+- 从 `tests/` 内使用 **`from orbit....`** 导入被测代码；依赖 `tests/conftest.py` 将仓库根加入 `sys.path`。
+
+详见 `tests/README.md` 中「规范」一节。

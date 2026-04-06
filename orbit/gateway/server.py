@@ -32,6 +32,7 @@ from ..log import get_logger
 from ..memory.bootstrap import load_bootstrap_system_prompt
 from ..plugin import load_plugins
 from .state import DedupeEntry, GatewayState, RunSnapshot
+from .subagents_cmd import schedule_subagents_if_needed
 from .types import AgentEvent
 from .wait_timeout import resolve_agent_wait_timeout_ms
 from .orch_trace import read_trace_events
@@ -697,6 +698,22 @@ def create_app(
                 "reset": reset_triggered,
             }
             state.set_dedupe(f"agent:{idem}", DedupeEntry(ts_ms=_now_ms(), ok=True, payload=accepted))
+
+            if schedule_subagents_if_needed(
+                state=state,
+                runner=runner,
+                agent_manager=agent_manager,
+                session_manager=session_manager,
+                message_after_reset=message,
+                parent_agent_id=agent_id,
+                parent_session_id=session_id,
+                parent_session_key=session_key,
+                cli_run_id=run_id,
+                reasoning_level=str(params.get("reasoningLevel") or params.get("reasoning_level") or "").strip()
+                or None,
+                create_task=asyncio.create_task,
+            ):
+                return {"id": req_id, "ok": True, "payload": accepted, "runId": run_id}
 
             async def _run() -> None:
                 try:

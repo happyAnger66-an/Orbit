@@ -14,6 +14,7 @@ import {
 import { useGatewayWs } from "@/lib/gateway-ws-context";
 import { useI18n } from "@/lib/i18n";
 import { isTauri } from "@/lib/tauri";
+import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { ChatThinkToolCheckbox } from "@/components/ChatThinkToolCheckbox";
 
 export type ToolTraceRow = {
@@ -948,7 +949,7 @@ export function ChatPanel({
                       </div>
                     </div>
                   ) : null}
-                  <div className="text-sm whitespace-pre-wrap">{m.text}</div>
+                  <ChatMarkdown text={m.text} role={m.role} />
                 </div>
               </div>
             ))}
