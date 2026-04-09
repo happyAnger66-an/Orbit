@@ -66,6 +66,7 @@ from ..session.transcript import (
     split_by_user_turns,
 )
 from ..tools.web_search_tool import is_web_search_enabled
+from ..tools.apply_patch_tool import is_apply_patch_enabled
 from ..tools.web_fetch_tool import is_web_fetch_enabled
 
 MAX_TOOL_ROUNDS = 30
@@ -789,6 +790,8 @@ class AgentRunner:
             # Do not expose web_fetch unless explicitly enabled (avoids unexpected external calls).
             if not is_web_fetch_enabled():
                 tools_after_policy = [t for t in tools_after_policy if t.name != "web_fetch"]
+            if not is_apply_patch_enabled():
+                tools_after_policy = [t for t in tools_after_policy if t.name != "apply_patch"]
             # Sandbox tool policy (optional) sits on top of normal policy.
             tools_after_policy = filter_tools_by_sandbox_policy(tools_after_policy, sandbox_policy)
 

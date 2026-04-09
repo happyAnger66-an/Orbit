@@ -16,6 +16,7 @@ from .policy import (
 from .registry import get_tool_registry
 from .web_fetch_tool import is_web_fetch_enabled
 from .web_search_tool import is_web_search_enabled
+from .apply_patch_tool import is_apply_patch_enabled
 
 
 def list_effective_tool_names_for_orchestrator_turn() -> List[str]:
@@ -45,6 +46,8 @@ def list_effective_tool_names_for_orchestrator_turn() -> List[str]:
         tools_after_policy = [t for t in tools_after_policy if t.name != "web_search"]
     if not is_web_fetch_enabled():
         tools_after_policy = [t for t in tools_after_policy if t.name != "web_fetch"]
+    if not is_apply_patch_enabled():
+        tools_after_policy = [t for t in tools_after_policy if t.name != "apply_patch"]
     tools_after_policy = filter_tools_by_sandbox_policy(tools_after_policy, sandbox_policy)
     names = sorted({str(t.name) for t in tools_after_policy if getattr(t, "name", None)})
     return names

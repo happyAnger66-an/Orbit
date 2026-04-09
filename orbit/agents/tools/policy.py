@@ -183,7 +183,9 @@ def _profile_allow_list(profile: str) -> List[str]:
 
     Profiles are intentionally simple and based on tool *names*:
     - minimal: no tools (LLM-only)
-    - coding: file + memory tools (read/write/memory_*) plus optional Feishu 文档插件工具 (feishu_*)
+    - coding: file + memory tools (read/write/memory_*) plus optional Feishu 文档插件工具 (feishu_*).
+      ``apply_patch`` is not in the base list; add ``tools.allow: ["apply_patch"]`` (or use profile
+      ``full``) and set ``tools.apply_patch.enabled: true`` to expose it.
     - full: all tools ("*")
     """
     p = (profile or "").strip().lower()

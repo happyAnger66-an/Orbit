@@ -10,6 +10,7 @@ from .web_search_tool import WebSearchTool
 from .web_fetch_tool import WebFetchTool
 from .exec_tool import ExecTool
 from .process_tool import ProcessTool
+from .apply_patch_tool import ApplyPatchTool, is_apply_patch_enabled
 
 
 def _register_builtin_tools() -> None:
@@ -17,6 +18,7 @@ def _register_builtin_tools() -> None:
     for tool in (
         ReadTool(),
         WriteTool(),
+        ApplyPatchTool(),
         MemorySearchTool(),
         MemoryGetTool(),
         MemoryWriteTool(),
@@ -47,4 +49,6 @@ __all__ = [
     "WebFetchTool",
     "ExecTool",
     "ProcessTool",
+    "ApplyPatchTool",
+    "is_apply_patch_enabled",
 ]
