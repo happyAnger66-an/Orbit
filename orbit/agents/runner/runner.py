@@ -70,7 +70,7 @@ from ..tools.apply_patch_tool import is_apply_patch_enabled
 from ..tools.web_fetch_tool import is_web_fetch_enabled
 from ..tools.todo_store import append_todos_snapshot_to_prompt
 
-MAX_TOOL_ROUNDS = 30
+MAX_TOOL_ROUNDS = 50
 TOOL_PROCESSING_START_SEC = 30.0
 TOOL_PROCESSING_INTERVAL_SEC = 60.0
 
